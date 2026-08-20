@@ -247,14 +247,14 @@ export function MerchantsPage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-4 sm:px-6 sm:py-6">
-        <div className="mb-4">
+      <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
+        <div className="mb-4 shrink-0">
           <p className="text-[15px] font-semibold text-navy">
             Merchants · <span className="text-muted">{liveCount} live</span>
           </p>
         </div>
 
-        <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="mb-4 flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2.5 lg:flex-row lg:items-center">
             <div className="relative w-full min-w-0 max-w-none lg:max-w-[300px]">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">
@@ -351,7 +351,7 @@ export function MerchantsPage() {
         </div>
 
         {selectedIds.length > 0 ? (
-          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-navy px-4 py-3">
+          <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3 rounded-xl bg-navy px-4 py-3">
             <span className="text-[13px] font-semibold text-white">
               {selectedIds.length} selected
             </span>
@@ -375,8 +375,9 @@ export function MerchantsPage() {
           </div>
         ) : null}
 
-        <div className="overflow-hidden rounded-xl border border-border bg-white">
-          <div className="overflow-x-auto">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
+          <div className="min-h-0 flex-1 overflow-auto">
+            <div className="overflow-x-auto">
             <table className="min-w-[980px] w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-border bg-[#FAF9F6]">
@@ -481,9 +482,10 @@ export function MerchantsPage() {
                 ) : null}
               </tbody>
             </table>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-white px-4 py-3.5">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border bg-white px-4 py-3.5">
             <p className="text-[12px] text-muted">
               Showing {rangeStart}–{rangeEnd} of {filtered.length}
               <span className="mx-1.5 text-border">·</span>

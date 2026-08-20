@@ -45,10 +45,18 @@ export function MerchantDetailPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6 sm:py-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
+      <header className="shrink-0 bg-navy px-4 py-5 text-white sm:px-6 sm:py-6">
+        <p className="text-[12px] text-white/65">
+          <Link to="/merchants" className="hover:text-white">
+            Merchants
+          </Link>
+          <span className="mx-1.5 text-white/40">/</span>
+          <span className="text-gold">{merchant.merchantCode}</span>
+        </p>
+
+        <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
           <div className="flex min-w-0 items-start gap-3 sm:gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-page text-[18px] font-bold text-navy sm:h-16 sm:w-16">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/15 bg-white/10 text-[18px] font-bold text-gold sm:h-16 sm:w-16">
               {merchant.logoUrl ? (
                 <img src={merchant.logoUrl} alt="" className="h-full w-full object-cover" />
               ) : (
@@ -57,23 +65,25 @@ export function MerchantDetailPage() {
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-[20px] font-bold tracking-[-0.02em] text-navy sm:text-[22px]">
+                <h1 className="text-[20px] font-bold tracking-[-0.02em] text-white sm:text-[22px]">
                   {merchant.businessName}
                 </h1>
-                <MerchantStatusBadge status={merchant.status} />
+                <span className="inline-flex items-center rounded-full bg-white/10 px-1 py-0.5">
+                  <MerchantStatusBadge status={merchant.status} />
+                </span>
                 {merchant.featured ? (
-                  <span className="inline-flex items-center rounded-full bg-[#FFF4D6] px-2.5 py-0.5 text-[11px] font-semibold text-[#A67A00]">
+                  <span className="inline-flex items-center rounded-full bg-gold/20 px-2.5 py-0.5 text-[11px] font-semibold text-gold">
                     Featured
                   </span>
                 ) : null}
               </div>
-              <p className="mt-1 break-words text-[13px] text-muted">
-                {merchant.merchantCode} · {merchant.category} ·{' '}
+              <p className="mt-1 break-words text-[13px] text-white/70">
+                {merchant.category} ·{' '}
                 {merchant.address || `${merchant.city}, ${merchant.state}`}
               </p>
-              <p className="mt-1 text-[13px] font-medium text-navy">
+              <p className="mt-1 text-[13px] font-medium text-white">
                 ★ {merchant.rating.toFixed(1)}{' '}
-                <span className="font-normal text-muted">
+                <span className="font-normal text-white/55">
                   ({merchant.ratingsCount.toLocaleString()} ratings)
                 </span>
               </p>
@@ -83,14 +93,14 @@ export function MerchantDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Link
               to={`/merchants/${merchant.id}/edit`}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
+              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
             >
               Edit
             </Link>
             <button
               type="button"
               onClick={() => setConfirm('deactivate')}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
+              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
             >
               Deactivate
             </button>
@@ -208,7 +218,9 @@ function TabButton({
       onClick={onClick}
       className={[
         'shrink-0 whitespace-nowrap border-b-2 px-3 pb-2.5 text-[13px] font-semibold transition',
-        active ? 'border-gold text-navy' : 'border-transparent text-muted hover:text-navy',
+        active
+          ? 'border-gold text-white'
+          : 'border-transparent text-white/55 hover:text-white',
       ].join(' ')}
     >
       {label}
@@ -268,11 +280,11 @@ function OverviewTab({ merchant }: { merchant: Merchant }) {
           </div>
         </section>
 
-        <section className="rounded-xl border border-border bg-white p-5 xl:hidden">
+        <section className="rounded-xl border border-border bg-white p-5">
           <ContactHoursCard merchant={merchant} />
         </section>
 
-        <section className="rounded-xl border border-border bg-white p-5">
+        <section className="rounded-xl border border-border bg-white p-5 xl:hidden">
           <h2 className="mb-4 text-[15px] font-bold text-navy">Recent activity</h2>
           <ActivityList merchant={merchant} compact />
         </section>
@@ -280,7 +292,8 @@ function OverviewTab({ merchant }: { merchant: Merchant }) {
 
       <aside className="hidden xl:block">
         <section className="rounded-xl border border-border bg-white p-5">
-          <ContactHoursCard merchant={merchant} />
+          <h2 className="mb-4 text-[15px] font-bold text-navy">Recent activity</h2>
+          <ActivityList merchant={merchant} compact />
         </section>
       </aside>
     </div>
