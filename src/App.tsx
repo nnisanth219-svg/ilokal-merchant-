@@ -2,6 +2,9 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/auth/ProtectedRoute'
 import { DashboardLayout } from './components/dashboard/DashboardLayout'
 import { AuthProvider } from './context/AuthContext'
+import { AdminUserDetailPage } from './pages/AdminUserDetailPage'
+import { AdminUsersPage } from './pages/AdminUsersPage'
+import { AuditLogPage } from './pages/AuditLogPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { CategoryFormPage } from './pages/CategoryFormPage'
 import { CreateMerchantPage } from './pages/CreateMerchantPage'
@@ -9,6 +12,7 @@ import { CreateOfferPage } from './pages/CreateOfferPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { EditMerchantPage } from './pages/EditMerchantPage'
 import { EditOfferPage } from './pages/EditOfferPage'
+import { InviteAdminPage } from './pages/InviteAdminPage'
 import { LoginPage } from './pages/LoginPage'
 import { MemberDetailPage } from './pages/MemberDetailPage'
 import { MembersPage } from './pages/MembersPage'
@@ -17,11 +21,11 @@ import { MerchantOffersPage } from './pages/MerchantOffersPage'
 import { MerchantsPage } from './pages/MerchantsPage'
 import { OfferDetailPage } from './pages/OfferDetailPage'
 import { OffersPage } from './pages/OffersPage'
-import { PlaceholderPage } from './pages/PlaceholderPage'
 import { RedemptionDetailPage } from './pages/RedemptionDetailPage'
 import { RedemptionsPage } from './pages/RedemptionsPage'
 import { ReviewDetailPage } from './pages/ReviewDetailPage'
 import { ReviewsPage } from './pages/ReviewsPage'
+import { SettingsPage } from './pages/SettingsPage'
 import { SubscriptionDetailPage } from './pages/SubscriptionDetailPage'
 import { SubscriptionsPage } from './pages/SubscriptionsPage'
 
@@ -56,9 +60,11 @@ export default function App() {
               <Route path="/categories" element={<CategoriesPage />} />
               <Route path="/categories/create" element={<CategoryFormPage />} />
               <Route path="/categories/:id/edit" element={<CategoryFormPage />} />
-              <Route path="/admin-users" element={<PlaceholderPage />} />
-              <Route path="/settings" element={<PlaceholderPage />} />
-              <Route path="/audit-log" element={<PlaceholderPage />} />
+              <Route path="/admin-users" element={<AdminUsersPage />} />
+              <Route path="/admin-users/invite" element={<InviteAdminPage />} />
+              <Route path="/admin-users/:id" element={<AdminUserDetailPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/audit-log" element={<AuditLogPage />} />
             </Route>
           </Route>
 

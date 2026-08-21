@@ -101,12 +101,32 @@ export const initialCategories: CategoryItem[] = [
     displayOrder: 10,
     updatedAt: '2026-07-15T07:00:00.000Z',
   },
-  // Extra rows so pagination has more than one page when page size is smaller in tests;
-  // with PAGE_SIZE 25 these still fit on one page — add fillers for pagination demo
-  ...Array.from({ length: 20 }, (_, i) => ({
+  // Extra marketplace categories for list/pagination demo density
+  ...[
+    'Home & Living',
+    'Fashion & Apparel',
+    'Health & Pharmacy',
+    'Kids & Family',
+    'Groceries',
+    'Tech & Gadgets',
+    'Arts & Culture',
+    'Sports & Outdoors',
+    'Photography',
+    'Events & Experiences',
+    'Florist & Gifts',
+    'Laundry & Cleaning',
+    'Printing & Stationery',
+    'Jewelry & Accessories',
+    'Cafés & Desserts',
+    'Halal Dining',
+    'Nightlife',
+    'Coworking',
+    'Logistics',
+    'Community Hub',
+  ].map((name, i) => ({
     id: `cat-${String(11 + i).padStart(3, '0')}`,
-    name: `Partner Vertical ${i + 1}`,
-    description: `Additional category slot for marketplace expansion ${i + 1}.`,
+    name,
+    description: `${name} partners across Malaysia.`,
     merchantsCount: i % 4 === 0 ? 0 : (i % 7) + 1,
     offersCount: i % 4 === 0 ? 0 : (i % 9) + 2,
     status: (i % 5 === 0 ? 'inactive' : 'active') as CategoryItem['status'],

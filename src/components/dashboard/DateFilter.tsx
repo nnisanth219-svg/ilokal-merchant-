@@ -56,7 +56,7 @@ export function DateFilter() {
               <button
                 type="button"
                 className={[
-                  'block w-full px-3 py-2 text-left text-[13px] transition hover:bg-page',
+                  'block min-h-[40px] w-full px-3 py-2.5 text-left text-[13px] transition hover:bg-page',
                   option === value ? 'font-semibold text-navy' : 'text-navy/80',
                 ].join(' ')}
                 onClick={() => {

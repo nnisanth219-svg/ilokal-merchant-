@@ -316,7 +316,7 @@ export function RedemptionsPage() {
             <button
               type="button"
               onClick={() => setSelectedIds([])}
-              className="inline-flex h-8 items-center rounded-md border border-white/25 bg-white/10 px-3 text-[12px] font-semibold text-white hover:bg-white/15"
+              className="inline-flex h-10 min-h-[40px] items-center rounded-md border border-white/25 bg-white/10 px-3 text-[12px] font-semibold text-white hover:bg-white/15"
             >
               Clear
             </button>

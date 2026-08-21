@@ -210,7 +210,7 @@ export function MerchantWizard({
                 type="button"
                 onClick={() => setStep(item.id)}
                 className={[
-                  'shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold',
+                  'inline-flex h-10 min-h-[40px] shrink-0 items-center rounded-full px-3 text-[12px] font-semibold',
                   item.id === step
                     ? 'bg-navy text-white'
                     : 'border border-border bg-white text-navy',

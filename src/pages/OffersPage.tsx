@@ -202,15 +202,15 @@ export function OffersPage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-4 sm:px-6 sm:py-6">
-        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
+        <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
           <SummaryCard label="Total offers" value={String(offerSummaryStats.total)} />
           <SummaryCard label="Live" value={String(offerSummaryStats.live)} />
           <SummaryCard label="Scheduled" value={String(offerSummaryStats.scheduled)} />
           <SummaryCard label="Expired" value={String(offerSummaryStats.expired)} />
         </div>
 
-        <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="mb-4 flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2.5 lg:flex-row lg:items-center">
             <div className="relative w-full min-w-0 max-w-none lg:max-w-[300px]">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">
@@ -304,7 +304,7 @@ export function OffersPage() {
               />
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
               type="button"
               className="inline-flex h-[38px] items-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page"
@@ -321,7 +321,7 @@ export function OffersPage() {
         </div>
 
         {selectedIds.length > 0 ? (
-          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-navy px-4 py-3">
+          <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3 rounded-xl bg-navy px-4 py-3">
             <span className="text-[13px] font-semibold text-white">
               {selectedIds.length} selected
             </span>
@@ -329,127 +329,129 @@ export function OffersPage() {
             <button
               type="button"
               onClick={() => setBulkConfirm('activate')}
-              className="inline-flex h-8 items-center rounded-md bg-navy-active px-3 text-[12px] font-semibold text-white hover:bg-[#2a5699]"
+              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-navy-active px-3 text-[12px] font-semibold text-white hover:bg-[#2a5699]"
             >
               Activate
             </button>
             <button
               type="button"
               onClick={() => setBulkConfirm('pause')}
-              className="inline-flex h-8 items-center rounded-md bg-navy-active px-3 text-[12px] font-semibold text-white hover:bg-[#2a5699]"
+              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-navy-active px-3 text-[12px] font-semibold text-white hover:bg-[#2a5699]"
             >
               Pause
             </button>
             <button
               type="button"
               onClick={() => setBulkConfirm('delete')}
-              className="inline-flex h-8 items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
+              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
             >
               Delete
             </button>
           </div>
         ) : null}
 
-        <div className="overflow-hidden rounded-xl border border-border bg-white">
-          <div className="overflow-x-auto">
-            <table className="min-w-[1080px] w-full border-collapse text-left">
-              <thead>
-                <tr className="border-b border-border bg-[#FAF9F6]">
-                  <th className="w-12 px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={allPageSelected}
-                      onChange={toggleSelectAll}
-                      aria-label="Select all offers on page"
-                      className="h-[14px] w-[14px] accent-navy"
-                    />
-                  </th>
-                  <Th>Offer</Th>
-                  <Th>Merchant</Th>
-                  <Th>Category</Th>
-                  <Th>Benefit</Th>
-                  <Th>Validity</Th>
-                  <Th>Redemptions</Th>
-                  <Th>Status</Th>
-                  <th className="w-12 px-3 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {pageItems.map((offer) => {
-                  const selected = selectedIds.includes(offer.id)
-                  return (
-                    <tr
-                      key={offer.id}
-                      className={[
-                        'border-b border-border last:border-b-0',
-                        selected ? 'bg-[#F7F9FC]' : 'bg-white hover:bg-[#FAFAF8]',
-                      ].join(' ')}
-                    >
-                      <td className="px-4 py-3.5 align-middle">
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={() =>
-                            setSelectedIds((prev) =>
-                              prev.includes(offer.id)
-                                ? prev.filter((id) => id !== offer.id)
-                                : [...prev, offer.id],
-                            )
-                          }
-                          aria-label={`Select ${offer.title}`}
-                          className="h-[14px] w-[14px] accent-navy"
-                        />
-                      </td>
-                      <td className="px-4 py-3.5 align-middle">
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/offers/${offer.id}`)}
-                          className="text-left"
-                        >
-                          <p className="text-[13px] font-semibold text-navy">{offer.title}</p>
-                          <p className="mt-0.5 text-[12px] text-muted">{offer.offerCode}</p>
-                        </button>
-                      </td>
-                      <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
-                        {offer.merchantName}
-                      </td>
-                      <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
-                        {offer.category}
-                      </td>
-                      <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
-                        {offer.benefitLabel}
-                      </td>
-                      <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
-                        {offer.validityLabel}
-                      </td>
-                      <td className="px-4 py-3.5 align-middle text-[13px] tabular-nums text-navy">
-                        {offer.redeemedCount.toLocaleString('en-US')} redeemed
-                      </td>
-                      <td className="px-4 py-3.5 align-middle">
-                        <OfferStatusBadge status={offer.status} />
-                      </td>
-                      <td className="px-3 py-3.5 align-middle">
-                        <RowActionButton
-                          label={`Actions for ${offer.title}`}
-                          open={openMenuId === offer.id}
-                          onToggle={(el) => toggleMenu(offer.id, el)}
-                        />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
+          <div className="min-h-0 flex-1 overflow-auto">
+            <div className="overflow-x-auto">
+              <table className="min-w-[1080px] w-full border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-border bg-[#FAF9F6]">
+                    <th className="w-12 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        onChange={toggleSelectAll}
+                        aria-label="Select all offers on page"
+                        className="h-[14px] w-[14px] accent-navy"
+                      />
+                    </th>
+                    <Th>Offer</Th>
+                    <Th>Merchant</Th>
+                    <Th>Category</Th>
+                    <Th>Benefit</Th>
+                    <Th>Validity</Th>
+                    <Th>Redemptions</Th>
+                    <Th>Status</Th>
+                    <th className="w-12 px-3 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageItems.map((offer) => {
+                    const selected = selectedIds.includes(offer.id)
+                    return (
+                      <tr
+                        key={offer.id}
+                        className={[
+                          'border-b border-border last:border-b-0',
+                          selected ? 'bg-[#F7F9FC]' : 'bg-white hover:bg-[#FAFAF8]',
+                        ].join(' ')}
+                      >
+                        <td className="px-4 py-3.5 align-middle">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() =>
+                              setSelectedIds((prev) =>
+                                prev.includes(offer.id)
+                                  ? prev.filter((id) => id !== offer.id)
+                                  : [...prev, offer.id],
+                              )
+                            }
+                            aria-label={`Select ${offer.title}`}
+                            className="h-[14px] w-[14px] accent-navy"
+                          />
+                        </td>
+                        <td className="px-4 py-3.5 align-middle">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/offers/${offer.id}`)}
+                            className="text-left"
+                          >
+                            <p className="text-[13px] font-semibold text-navy">{offer.title}</p>
+                            <p className="mt-0.5 text-[12px] text-muted">{offer.offerCode}</p>
+                          </button>
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
+                          {offer.merchantName}
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
+                          {offer.category}
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
+                          {offer.benefitLabel}
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
+                          {offer.validityLabel}
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-[13px] tabular-nums text-navy">
+                          {offer.redeemedCount.toLocaleString('en-US')} redeemed
+                        </td>
+                        <td className="px-4 py-3.5 align-middle">
+                          <OfferStatusBadge status={offer.status} />
+                        </td>
+                        <td className="px-3 py-3.5 align-middle">
+                          <RowActionButton
+                            label={`Actions for ${offer.title}`}
+                            open={openMenuId === offer.id}
+                            onToggle={(el) => toggleMenu(offer.id, el)}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {pageItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
+                        No offers match your filters.
                       </td>
                     </tr>
-                  )
-                })}
-                {pageItems.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
-                      No offers match your filters.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-white px-4 py-3.5">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border bg-white px-4 py-3.5">
             <p className="text-[12px] text-muted">
               Showing {rangeStart}–{rangeEnd} of {filtered.length}
             </p>
@@ -591,7 +593,7 @@ function PagerButton({
       disabled={disabled}
       onClick={onClick}
       className={[
-        'inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2.5 text-[12px] font-semibold',
+        'inline-flex h-10 min-h-[40px] min-w-10 items-center justify-center rounded-md px-2.5 text-[12px] font-semibold',
         active
           ? 'bg-navy text-white'
           : 'border border-border bg-white text-navy hover:bg-page disabled:cursor-not-allowed disabled:opacity-40',

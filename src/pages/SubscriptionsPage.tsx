@@ -316,7 +316,7 @@ export function SubscriptionsPage() {
             <button
               type="button"
               onClick={() => setBulkConfirm('cancel')}
-              className="inline-flex h-8 items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
+              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
             >
               Cancel
             </button>

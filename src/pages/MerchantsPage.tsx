@@ -334,7 +334,7 @@ export function MerchantsPage() {
               />
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
               type="button"
               className="inline-flex h-[38px] items-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page"
@@ -368,7 +368,7 @@ export function MerchantsPage() {
             <button
               type="button"
               onClick={() => setBulkConfirm('delete')}
-              className="inline-flex h-8 items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
+              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
             >
               Delete
             </button>
@@ -640,7 +640,7 @@ function BulkBtn({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 items-center rounded-md bg-navy-active px-3 text-[12px] font-semibold text-white hover:bg-[#2a5699]"
+      className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-navy-active px-3 text-[12px] font-semibold text-white hover:bg-[#2a5699]"
     >
       {label}
     </button>
@@ -664,7 +664,7 @@ function PagerButton({
       disabled={disabled}
       onClick={onClick}
       className={[
-        'inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2.5 text-[12px] font-semibold',
+        'inline-flex h-10 min-h-[40px] min-w-10 items-center justify-center rounded-md px-2.5 text-[12px] font-semibold',
         active
           ? 'bg-navy text-white'
           : 'border border-border bg-white text-navy hover:bg-page disabled:cursor-not-allowed disabled:opacity-40',

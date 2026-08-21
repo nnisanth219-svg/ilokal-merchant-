@@ -301,7 +301,7 @@ export function MembersPage() {
             <button
               type="button"
               onClick={() => setBulkConfirm('delete')}
-              className="inline-flex h-8 items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
+              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
             >
               Delete
             </button>
@@ -550,7 +550,7 @@ function BulkBtn({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 items-center rounded-md border border-white/25 bg-white/10 px-3 text-[12px] font-semibold text-white hover:bg-white/15"
+      className="inline-flex h-10 min-h-[40px] items-center rounded-md border border-white/25 bg-white/10 px-3 text-[12px] font-semibold text-white hover:bg-white/15"
     >
       {label}
     </button>
@@ -574,7 +574,7 @@ function PagerButton({
       onClick={onClick}
       disabled={disabled}
       className={[
-        'inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2.5 text-[12px] font-semibold transition',
+        'inline-flex h-10 min-h-[40px] min-w-10 items-center justify-center rounded-md px-2.5 text-[12px] font-semibold transition',
         active
           ? 'bg-navy text-white'
           : 'border border-border bg-white text-navy hover:bg-page disabled:cursor-not-allowed disabled:opacity-40',
