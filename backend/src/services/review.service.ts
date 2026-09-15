@@ -62,7 +62,7 @@ async function syncReviewCounters(memberId: string, merchantId: string) {
   const rating =
     ratingsCount > 0
       ? Math.round(
-          (publishedReviews.reduce((sum, r) => sum + r.rating, 0) / ratingsCount) * 10,
+          (publishedReviews.reduce((sum, row) => sum + row.rating, 0) / ratingsCount) * 10,
         ) / 10
       : 0
 
@@ -142,7 +142,7 @@ export async function listReviews(query: ReviewListQuery): Promise<ReviewListRes
   const avg =
     allPublished.length > 0
       ? Math.round(
-          (allPublished.reduce((sum, r) => sum + r.rating, 0) / allPublished.length) * 10,
+          (allPublished.reduce((sum, row) => sum + row.rating, 0) / allPublished.length) * 10,
         ) / 10
       : 0
 
@@ -162,7 +162,7 @@ export async function listReviews(query: ReviewListQuery): Promise<ReviewListRes
     },
     filterOptions: {
       merchants: merchantRows
-        .map((r) => ({ id: r.merchantId, name: r.merchant.businessName }))
+        .map((row) => ({ id: row.merchantId, name: row.merchant.businessName }))
         .sort((a, b) => a.name.localeCompare(b.name)),
     },
   }
@@ -274,10 +274,11 @@ export async function bulkUpdateReviewStatus(
     where: { id: { in: ids }, deletedAt: null },
     data: { status },
   })
-  const pairs = new Set(rows.map((r) => `${r.memberId}|${r.merchantId}`))
+  const pairs = new Set(rows.map((row) => `${row.memberId}|${row.merchantId}`))
   await Promise.all(
-    [...pairs].map((key) => {
-      const [memberId = '', merchantId = ''] = key.split('|')
+    [...pairs].map((pair) => {
+      const [memberId, merchantId] = pair.split('|')
+      if (!memberId || !merchantId) return Promise.resolve()
       return syncReviewCounters(memberId, merchantId)
     }),
   )
@@ -294,10 +295,11 @@ export async function bulkSoftDeleteReviews(ids: string[]): Promise<number> {
     where: { id: { in: ids }, deletedAt: null },
     data: { deletedAt: new Date(), status: 'hidden' },
   })
-  const pairs = new Set(rows.map((r) => `${r.memberId}|${r.merchantId}`))
+  const pairs = new Set(rows.map((row) => `${row.memberId}|${row.merchantId}`))
   await Promise.all(
-    [...pairs].map((key) => {
-      const [memberId = '', merchantId = ''] = key.split('|')
+    [...pairs].map((pair) => {
+      const [memberId, merchantId] = pair.split('|')
+      if (!memberId || !merchantId) return Promise.resolve()
       return syncReviewCounters(memberId, merchantId)
     }),
   )

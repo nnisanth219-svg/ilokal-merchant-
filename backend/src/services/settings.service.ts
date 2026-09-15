@@ -39,7 +39,7 @@ export async function getAllSettings(): Promise<AppSettingsState> {
   const rows = await prisma.setting.findMany({
     where: { key: { in: SETTING_KEYS } },
   })
-  const byKey = new Map(rows.map((r) => [r.key, r.value]))
+  const byKey = new Map(rows.map((row) => [row.key, row.value]))
   return {
     general: asSectionValue('general', byKey.get('general') ?? null) as AppSettingsState['general'],
     security: asSectionValue('security', byKey.get('security') ?? null) as AppSettingsState['security'],
