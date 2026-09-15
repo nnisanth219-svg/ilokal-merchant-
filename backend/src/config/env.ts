@@ -8,23 +8,36 @@ function required(name: string): string {
   return value
 }
 
+/** Deployed Vercel SPA — always allowed so Railway CORS works even if FRONTEND_ORIGIN is still localhost. */
+const PRODUCTION_FRONTEND_ORIGINS = ['https://ilokal-merchant.vercel.app']
+
 function parseOrigins(raw: string | undefined): string[] {
   const list = (raw ?? 'http://localhost:3000')
     .split(',')
-    .map((value) => value.trim())
+    .map((value) => value.trim().replace(/\/+$/, ''))
     .filter(Boolean)
+
+  for (const origin of PRODUCTION_FRONTEND_ORIGINS) {
+    if (!list.includes(origin)) list.push(origin)
+  }
+
   return list.length > 0 ? list : ['http://localhost:3000']
 }
 
-function parseSameSite(raw: string | undefined): 'lax' | 'strict' | 'none' {
-  const value = (raw ?? 'lax').trim().toLowerCase()
+function parseSameSite(
+  raw: string | undefined,
+  fallback: 'lax' | 'strict' | 'none',
+): 'lax' | 'strict' | 'none' {
+  const value = (raw ?? fallback).trim().toLowerCase()
   if (value === 'strict' || value === 'none' || value === 'lax') return value
-  return 'lax'
+  return fallback
 }
 
 const nodeEnv = process.env.NODE_ENV ?? 'development'
 const frontendOrigins = parseOrigins(process.env.FRONTEND_ORIGIN)
-const cookieSameSite = parseSameSite(process.env.COOKIE_SAMESITE)
+// Vercel and Railway are different sites; Lax cookies are not stored on the login response.
+const cookieSameSite =
+  nodeEnv === 'production' ? 'none' : parseSameSite(process.env.COOKIE_SAMESITE, 'lax')
 const cookieSecure =
   process.env.COOKIE_SECURE === 'true' ||
   (process.env.COOKIE_SECURE !== 'false' && (nodeEnv === 'production' || cookieSameSite === 'none'))
@@ -36,7 +49,12 @@ export const env = {
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '1d',
   frontendOrigins,
-  frontendOrigin: frontendOrigins[0],
+  frontendOrigin:
+    nodeEnv === 'production'
+      ? (frontendOrigins.find(
+          (origin) => origin.startsWith('https://') && !origin.includes('localhost'),
+        ) ?? frontendOrigins[0])
+      : frontendOrigins[0],
   cookieName: process.env.COOKIE_NAME ?? 'ilokal_token',
   cookieSameSite,
   cookieSecure,
