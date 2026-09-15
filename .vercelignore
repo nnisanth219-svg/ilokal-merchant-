@@ -1,0 +1,9 @@
+# Express API is hosted separately — do not upload or treat as a Vercel service.
+backend
+
+# Local secrets and tooling
+.env
+.env.*
+!.env.example
+.firebase
+*.local
