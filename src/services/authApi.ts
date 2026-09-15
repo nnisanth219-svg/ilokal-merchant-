@@ -1,10 +1,5 @@
-import type { AuthErrorResponse, AuthSuccessResponse, AuthUser } from '../types/auth'
-
-const API_URL = import.meta.env.VITE_API_URL
-
-if (!API_URL) {
-  throw new Error('VITE_API_URL is not configured')
-}
+import type { AuthSuccessResponse, AuthUser } from '../types/auth'
+import { getApiBaseUrl, requireApiBaseUrl } from './apiConfig'
 
 async function parseJson(response: Response): Promise<unknown> {
   try {
@@ -27,7 +22,8 @@ function getErrorMessage(payload: unknown, fallback: string): string {
 }
 
 export async function loginRequest(email: string, password: string): Promise<AuthUser> {
-  const response = await fetch(`${API_URL}/api/auth/login`, {
+  const apiUrl = requireApiBaseUrl()
+  const response = await fetch(`${apiUrl}/api/auth/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -51,33 +47,46 @@ export async function loginRequest(email: string, password: string): Promise<Aut
 }
 
 export async function fetchCurrentUser(): Promise<AuthUser | null> {
-  const response = await fetch(`${API_URL}/api/auth/me`, {
-    method: 'GET',
-    credentials: 'include',
-  })
-
-  if (response.status === 401) {
+  const apiUrl = getApiBaseUrl()
+  if (!apiUrl) {
     return null
   }
 
-  const payload = await parseJson(response)
+  try {
+    const response = await fetch(`${apiUrl}/api/auth/me`, {
+      method: 'GET',
+      credentials: 'include',
+    })
 
-  if (!response.ok) {
-    throw new Error(getErrorMessage(payload, 'Unable to verify session'))
+    if (response.status === 401) {
+      return null
+    }
+
+    const payload = await parseJson(response)
+
+    if (!response.ok) {
+      return null
+    }
+
+    const data = payload as AuthSuccessResponse
+    return data.user ?? null
+  } catch {
+    return null
   }
-
-  const data = payload as AuthSuccessResponse
-  return data.user ?? null
 }
 
 export async function logoutRequest(): Promise<void> {
-  const response = await fetch(`${API_URL}/api/auth/logout`, {
-    method: 'POST',
-    credentials: 'include',
-  })
+  const apiUrl = getApiBaseUrl()
+  if (!apiUrl) {
+    return
+  }
 
-  if (!response.ok) {
-    const payload = (await parseJson(response)) as AuthErrorResponse | null
-    throw new Error(getErrorMessage(payload, 'Unable to log out'))
+  try {
+    await fetch(`${apiUrl}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+  } catch {
+    // Client session is cleared even if the API is unreachable.
   }
 }

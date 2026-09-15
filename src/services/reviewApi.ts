@@ -1,10 +1,5 @@
 import type { ReviewItem, ReviewStatus } from '../types/review'
-
-const API_URL = import.meta.env.VITE_API_URL
-
-if (!API_URL) {
-  throw new Error('VITE_API_URL is not configured')
-}
+import { requireApiBaseUrl } from './apiConfig'
 
 interface ApiSuccess<T> {
   success: true
@@ -71,7 +66,7 @@ async function request<T>(
   init: RequestInit,
   fallbackError: string,
 ): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${requireApiBaseUrl()}${path}`, {
     ...init,
     credentials: 'include',
     headers: {

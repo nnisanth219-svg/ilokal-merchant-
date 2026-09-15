@@ -5,12 +5,7 @@ import type {
   DashboardChartData,
   DashboardStats,
 } from '../types/dashboard'
-
-const API_URL = import.meta.env.VITE_API_URL
-
-if (!API_URL) {
-  throw new Error('VITE_API_URL is not configured')
-}
+import { requireApiBaseUrl } from './apiConfig'
 
 async function parseJson(response: Response): Promise<unknown> {
   try {
@@ -33,7 +28,7 @@ function getErrorMessage(payload: unknown, fallback: string): string {
 }
 
 async function getDashboardResource<T>(path: string, fallbackError: string): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${requireApiBaseUrl()}${path}`, {
     method: 'GET',
     credentials: 'include',
   })
