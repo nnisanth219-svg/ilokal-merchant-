@@ -1,4 +1,4 @@
-export type MemberStatus = 'active' | 'expired' | 'suspended' | 'inactive'
+export type MemberStatus = 'active' | 'expired' | 'suspended' | 'inactive' | 'deleted'
 
 export type MembershipPlan = 'Annual' | 'Monthly' | 'None'
 
@@ -38,7 +38,7 @@ export interface MemberDeviceInfo {
 
 export interface MemberSubscriptionInfo {
   plan: MembershipPlan
-  status: MemberStatus
+  status: Exclude<MemberStatus, 'deleted'>
   startDate: string
   validUntil: string
   paymentStatus: string
@@ -72,6 +72,9 @@ export interface Member {
   device: MemberDeviceInfo
   subscription: MemberSubscriptionInfo
   supportNotes: MemberSupportNote[]
+  createdAt?: string
+  updatedAt?: string
+  deletedAt?: string | null
 }
 
 export const MEMBER_STATUS_FILTERS: { value: MemberStatus | 'all'; label: string }[] = [
@@ -80,6 +83,7 @@ export const MEMBER_STATUS_FILTERS: { value: MemberStatus | 'all'; label: string
   { value: 'expired', label: 'Expired' },
   { value: 'suspended', label: 'Suspended' },
   { value: 'inactive', label: 'Inactive' },
+  { value: 'deleted', label: 'Deleted' },
 ]
 
 export const MEMBER_PLAN_FILTERS: { value: MembershipPlan | 'all'; label: string }[] = [

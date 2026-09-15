@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AuditStatusBadge } from '../components/audit/AuditStatusBadge'
 import {
@@ -11,8 +11,11 @@ import {
   SummaryCard,
   Th,
 } from '../components/cms/AdminListPrimitives'
-import { AUDIT_LOG_SUMMARY } from '../data/auditLogs'
-import { getAuditLogs, subscribeAuditLogs } from '../services/auditLogStore'
+import {
+  getAuditLogApi,
+  listAuditLogsApi,
+  type AuditLogListResponse,
+} from '../services/auditLogApi'
 import {
   AUDIT_ACTION_FILTERS,
   AUDIT_MODULE_FILTERS,
@@ -31,18 +34,26 @@ const DATE_FILTERS: { value: DateFilter; label: string }[] = [
   { value: '90d', label: 'Last 90 days' },
 ]
 
-function withinPastDays(iso: string, days: number): boolean {
-  const ts = new Date(iso).getTime()
-  if (Number.isNaN(ts)) return false
-  const now = Date.now()
-  const start = now - days * 24 * 60 * 60 * 1000
-  return ts >= start && ts <= now
-}
-
 export function AuditLogPage() {
-  const [items, setItems] = useState(getAuditLogs)
+  const [items, setItems] = useState<AuditLogEntry[]>([])
+  const [summary, setSummary] = useState<AuditLogListResponse['summary']>({
+    total: 0,
+    today: 0,
+    warnings: 0,
+    failed: 0,
+  })
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: CMS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [admin, setAdmin] = useState('all')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [adminId, setAdminId] = useState('all')
+  const [knownAdmins, setKnownAdmins] = useState<{ id: string; name: string }[]>([])
   const [module, setModule] = useState('all')
   const [action, setAction] = useState('all')
   const [status, setStatus] = useState<StatusFilter>('all')
@@ -50,48 +61,68 @@ export function AuditLogPage() {
   const [page, setPage] = useState(1)
   const [detail, setDetail] = useState<AuditLogEntry | null>(null)
 
-  useEffect(() => subscribeAuditLogs(() => setItems(getAuditLogs())), [])
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
-  const adminOptions = useMemo(() => {
-    const names = [...new Set(items.map((e) => e.adminName))].sort()
-    return [
-      { value: 'all', label: 'All admins' },
-      ...names.map((name) => ({ value: name, label: name })),
-    ]
-  }, [items])
-
-  const filtered = useMemo(() => {
-    return items.filter((entry) => {
-      if (admin !== 'all' && entry.adminName !== admin) return false
-      if (module !== 'all' && entry.module !== module) return false
-      if (action !== 'all' && entry.action !== action) return false
-      if (status !== 'all' && entry.status !== status) return false
-      if (dateRange !== 'any') {
-        const days = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : 90
-        if (!withinPastDays(entry.occurredAt, days)) return false
-      }
-      if (search.trim()) {
-        const q = search.toLowerCase()
-        if (
-          !`${entry.adminName} ${entry.action} ${entry.module} ${entry.description} ${entry.reason} ${entry.target ?? ''}`
-            .toLowerCase()
-            .includes(q)
-        ) {
-          return false
+  const loadLogs = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await listAuditLogsApi({
+        page,
+        pageSize: CMS_PAGE_SIZE,
+        search: debouncedSearch,
+        module,
+        action,
+        status,
+        adminId,
+        dateRange,
+      })
+      setItems(data.logs)
+      setSummary(data.summary)
+      setPagination(data.pagination)
+      setKnownAdmins((prev) => {
+        const map = new Map(prev.map((a) => [a.id, a.name]))
+        for (const log of data.logs) {
+          if (log.adminId) map.set(log.adminId, log.adminName)
         }
-      }
-      return true
-    })
-  }, [items, admin, module, action, status, dateRange, search])
+        return [...map.entries()]
+          .map(([id, name]) => ({ id, name }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load audit logs')
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
+  }, [page, debouncedSearch, module, action, status, adminId, dateRange])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / CMS_PAGE_SIZE))
-  const currentPage = Math.min(page, totalPages)
-  const pageItems = filtered.slice(
-    (currentPage - 1) * CMS_PAGE_SIZE,
-    currentPage * CMS_PAGE_SIZE,
+  useEffect(() => {
+    void loadLogs()
+  }, [loadLogs])
+
+  const adminOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All admins' },
+      ...knownAdmins.map((a) => ({ value: a.id, label: a.name })),
+    ],
+    [knownAdmins],
   )
-  const rangeStart = filtered.length === 0 ? 0 : (currentPage - 1) * CMS_PAGE_SIZE + 1
-  const rangeEnd = Math.min(currentPage * CMS_PAGE_SIZE, filtered.length)
+
+  const selectedAdminLabel =
+    adminId === 'all'
+      ? 'All'
+      : (knownAdmins.find((a) => a.id === adminId)?.name ?? adminId)
+
+  const pageItems = items
+  const totalPages = Math.max(1, pagination.totalPages)
+  const currentPage = Math.min(page, totalPages)
+  const total = pagination.total
+  const rangeStart = total === 0 ? 0 : (currentPage - 1) * CMS_PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * CMS_PAGE_SIZE, total)
   const pageNumbers = useMemo(
     () => pageWindow(currentPage, totalPages),
     [currentPage, totalPages],
@@ -110,11 +141,13 @@ export function AuditLogPage() {
 
       <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryCard label="Total events" value={String(AUDIT_LOG_SUMMARY.total)} />
-          <SummaryCard label="Today" value={String(AUDIT_LOG_SUMMARY.today)} />
-          <SummaryCard label="Warnings" value={String(AUDIT_LOG_SUMMARY.warnings)} />
-          <SummaryCard label="Failed" value={String(AUDIT_LOG_SUMMARY.failed)} />
+          <SummaryCard label="Total events" value={String(summary.total)} />
+          <SummaryCard label="Today" value={String(summary.today)} />
+          <SummaryCard label="Warnings" value={String(summary.warnings)} />
+          <SummaryCard label="Failed" value={String(summary.failed)} />
         </div>
+
+        {error ? <p className="mb-3 text-[12px] text-action">{error}</p> : null}
 
         <div className="mb-4 flex shrink-0 flex-col gap-3">
           <div className="flex min-w-0 flex-1 flex-col gap-2.5 lg:flex-row lg:items-center lg:flex-wrap">
@@ -136,10 +169,10 @@ export function AuditLogPage() {
             <div className="flex flex-wrap items-center gap-2">
               <FilterPill
                 label="Admin"
-                value={admin}
-                displayValue={admin === 'all' ? 'All' : admin}
+                value={adminId}
+                displayValue={selectedAdminLabel}
                 onChange={(v) => {
-                  setAdmin(v)
+                  setAdminId(v)
                   setPage(1)
                 }}
                 options={adminOptions}
@@ -217,6 +250,13 @@ export function AuditLogPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {loading && pageItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
+                        Loading audit events…
+                      </td>
+                    </tr>
+                  ) : null}
                   {pageItems.map((row) => (
                     <tr
                       key={row.id}
@@ -261,7 +301,7 @@ export function AuditLogPage() {
                       </td>
                     </tr>
                   ))}
-                  {pageItems.length === 0 ? (
+                  {!loading && pageItems.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
                         No audit events match your filters.
@@ -275,7 +315,7 @@ export function AuditLogPage() {
 
           <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {filtered.length}
+              Showing {rangeStart}–{rangeEnd} of {total}
             </p>
             <div className="flex flex-wrap items-center gap-1">
               <PagerButton
@@ -318,6 +358,23 @@ function AuditDetailDrawer({
   entry: AuditLogEntry
   onClose: () => void
 }) {
+  const [detail, setDetail] = useState(entry)
+
+  useEffect(() => {
+    setDetail(entry)
+    let cancelled = false
+    getAuditLogApi(entry.id)
+      .then((full) => {
+        if (!cancelled) setDetail(full)
+      })
+      .catch(() => {
+        /* keep list-row data */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [entry])
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <button
@@ -332,7 +389,7 @@ function AuditDetailDrawer({
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
               Audit detail
             </p>
-            <h2 className="mt-1 text-[16px] font-bold text-navy">{entry.action}</h2>
+            <h2 className="mt-1 text-[16px] font-bold text-navy">{detail.action}</h2>
           </div>
           <button
             type="button"
@@ -346,26 +403,26 @@ function AuditDetailDrawer({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           <dl className="space-y-4">
-            <DetailRow label="Action" value={entry.action} />
-            <DetailRow label="Admin" value={entry.adminName} />
-            <DetailRow label="Date & time" value={formatDateTime(entry.occurredAt)} />
-            <DetailRow label="Module" value={entry.module} />
-            <DetailRow label="Target" value={entry.target ?? '—'} />
-            <DetailRow label="Description" value={entry.description} />
-            <DetailRow label="Reason" value={entry.reason} />
+            <DetailRow label="Action" value={detail.action} />
+            <DetailRow label="Admin" value={detail.adminName} />
+            <DetailRow label="Date & time" value={formatDateTime(detail.occurredAt)} />
+            <DetailRow label="Module" value={detail.module} />
+            <DetailRow label="Target" value={detail.target ?? '—'} />
+            <DetailRow label="Description" value={detail.description} />
+            <DetailRow label="Reason" value={detail.reason} />
             <div>
               <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
                 Status
               </dt>
               <dd className="mt-1.5">
-                <AuditStatusBadge status={entry.status} />
+                <AuditStatusBadge status={detail.status} />
               </dd>
             </div>
-            {entry.previousValue ? (
-              <DetailRow label="Previous value" value={entry.previousValue} />
+            {detail.previousValue ? (
+              <DetailRow label="Previous value" value={detail.previousValue} />
             ) : null}
-            {entry.newValue ? <DetailRow label="New value" value={entry.newValue} /> : null}
-            <DetailRow label="IP / device" value={entry.ipLabel} />
+            {detail.newValue ? <DetailRow label="New value" value={detail.newValue} /> : null}
+            <DetailRow label="IP / device" value={detail.ipLabel} />
           </dl>
         </div>
 

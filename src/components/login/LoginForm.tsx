@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { firstAllowedPath } from '../auth/UnauthorizedPage'
 import type { AuthErrorState, LoginFormErrors, LoginFormValues } from '../../types/auth'
 import { EmailField } from './EmailField'
 import { LoginOptions } from './LoginOptions'
@@ -72,8 +73,8 @@ export function LoginForm({
     onAuthError?.(null)
 
     try {
-      await login(values.email.trim(), values.password)
-      navigate('/dashboard', { replace: true })
+      const authenticatedUser = await login(values.email.trim(), values.password)
+      navigate(firstAllowedPath(authenticatedUser), { replace: true })
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Invalid email or password'

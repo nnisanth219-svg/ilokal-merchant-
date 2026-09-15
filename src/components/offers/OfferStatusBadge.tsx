@@ -6,6 +6,7 @@ const STATUS_STYLES: Record<OfferStatus, string> = {
   draft: 'bg-[#F0EEEA] text-muted',
   expired: 'bg-[#EDEDED] text-[#9A9A9A]',
   paused: 'bg-[#FFF4D6] text-[#A67A00]',
+  deleted: 'bg-[#F0EEEA] text-muted',
 }
 
 const STATUS_LABELS: Record<OfferStatus, string> = {
@@ -14,6 +15,7 @@ const STATUS_LABELS: Record<OfferStatus, string> = {
   draft: 'Draft',
   expired: 'Expired',
   paused: 'Paused',
+  deleted: 'Deleted',
 }
 
 interface OfferStatusBadgeProps {

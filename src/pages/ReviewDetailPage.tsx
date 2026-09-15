@@ -3,12 +3,14 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { ReviewStatusBadge } from '../components/reviews/ReviewStatusBadge'
 import { formatDate } from '../components/cms/AdminListPrimitives'
+import { useAuth } from '../context/AuthContext'
 import {
-  deleteReview,
-  getReviewById,
-  setReviewStatus,
-  subscribeReviews,
-} from '../services/reviewStore'
+  getReviewApi,
+  softDeleteReviewApi,
+  updateReviewStatusApi,
+} from '../services/reviewApi'
+import { canDeleteInModule, canEditInModule } from '../types/auth'
+import type { ReviewItem } from '../types/review'
 
 function stars(rating: number): string {
   const safe = Math.max(0, Math.min(5, Math.round(rating)))
@@ -18,19 +20,90 @@ function stars(rating: number): string {
 export function ReviewDetailPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const [item, setItem] = useState(() => getReviewById(id))
+  const { user } = useAuth()
+  const canEdit = canEditInModule(user, 'Reviews')
+  const canDelete = canDeleteInModule(user, 'Reviews')
+  const [item, setItem] = useState<ReviewItem | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
-    setItem(getReviewById(id))
-    return subscribeReviews(() => setItem(getReviewById(id)))
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    getReviewApi(id)
+      .then((data) => {
+        if (!cancelled) setItem(data)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setItem(null)
+          setError(err instanceof Error ? err.message : 'Unable to load review')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [id])
+
+  async function reload(): Promise<void> {
+    const data = await getReviewApi(id)
+    setItem(data)
+  }
+
+  async function handleMarkReviewed(): Promise<void> {
+    if (!item) return
+    try {
+      setError(null)
+      await updateReviewStatusApi(item.id, 'published')
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update review')
+    }
+  }
+
+  async function handleHide(): Promise<void> {
+    if (!item) return
+    try {
+      setError(null)
+      await updateReviewStatusApi(item.id, 'hidden')
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update review')
+    }
+  }
+
+  async function handleDelete(): Promise<void> {
+    if (!item) return
+    try {
+      setError(null)
+      await softDeleteReviewApi(item.id)
+      setConfirmDelete(false)
+      navigate('/reviews')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to delete review')
+      setConfirmDelete(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <p className="text-[13px] text-muted">Loading review…</p>
+      </div>
+    )
+  }
 
   if (!item) {
     return (
       <div className="flex h-full items-center justify-center px-6">
         <div className="text-center">
           <h1 className="text-[20px] font-bold text-navy">Review not found</h1>
+          {error ? <p className="mt-2 text-[13px] text-action">{error}</p> : null}
           <Link
             to="/reviews"
             className="mt-3 inline-block text-[13px] font-semibold text-navy underline"
@@ -67,6 +140,7 @@ export function ReviewDetailPage() {
             <p className="mt-1 text-[13px] text-white/70">
               by {item.memberName} · {formatDate(item.submittedAt)}
             </p>
+            {error ? <p className="mt-2 text-[12px] text-action">{error}</p> : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -77,27 +151,33 @@ export function ReviewDetailPage() {
             >
               Back
             </button>
-            <button
-              type="button"
-              onClick={() => setReviewStatus(item.id, 'published')}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
-            >
-              Mark as reviewed
-            </button>
-            <button
-              type="button"
-              onClick={() => setReviewStatus(item.id, 'hidden')}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
-            >
-              Hide
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
-            >
-              Delete
-            </button>
+            {canEdit ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void handleMarkReviewed()}
+                  className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                >
+                  Mark as reviewed
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleHide()}
+                  className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                >
+                  Hide
+                </button>
+              </>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
+              >
+                Delete
+              </button>
+            ) : null}
           </div>
         </div>
       </header>
@@ -146,11 +226,7 @@ export function ReviewDetailPage() {
         confirmLabel="Delete review"
         destructive
         onCancel={() => setConfirmDelete(false)}
-        onConfirm={() => {
-          deleteReview(item.id)
-          setConfirmDelete(false)
-          navigate('/reviews')
-        }}
+        onConfirm={() => void handleDelete()}
       />
     </div>
   )

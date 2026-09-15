@@ -8,14 +8,15 @@ import {
   type ReactNode,
 } from 'react'
 import { fetchCurrentUser, loginRequest, logoutRequest } from '../services/authApi'
-import type { AuthUser } from '../types/auth'
+import { hasPermission, type AuthUser } from '../types/auth'
 
 interface AuthContextValue {
   user: AuthUser | null
   loading: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<AuthUser>
   logout: () => Promise<void>
   refresh: () => Promise<void>
+  can: (module: string, action: string) => boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -57,12 +58,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const authenticatedUser = await loginRequest(email, password)
     setUser(authenticatedUser)
+    return authenticatedUser
   }, [])
 
   const logout = useCallback(async () => {
     await logoutRequest()
     setUser(null)
   }, [])
+
+  const can = useCallback(
+    (module: string, action: string) => hasPermission(user, module, action),
+    [user],
+  )
 
   const value = useMemo(
     () => ({
@@ -71,8 +78,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       refresh,
+      can,
     }),
-    [user, loading, login, logout, refresh],
+    [user, loading, login, logout, refresh, can],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

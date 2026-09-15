@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { RedemptionStatusBadge } from '../components/redemptions/RedemptionStatusBadge'
 import {
@@ -17,10 +17,13 @@ import {
   ViewportAwareMenu,
   type ViewportMenuItem,
 } from '../components/ui/ViewportAwareMenu'
-import { REDEMPTION_SUMMARY } from '../data/redemptions'
-import { getRedemptions, subscribeRedemptions } from '../services/redemptionStore'
+import {
+  listRedemptionsApi,
+  type RedemptionListResponse,
+} from '../services/redemptionApi'
 import {
   REDEMPTION_STATUS_FILTERS,
+  type Redemption,
   type RedemptionStatus,
 } from '../types/redemption'
 
@@ -34,16 +37,30 @@ const DATE_FILTERS: { value: DateFilter; label: string }[] = [
   { value: '90d', label: 'Last 90 days' },
 ]
 
-function withinLastDays(iso: string, days: number): boolean {
-  const ts = new Date(iso).getTime()
-  if (Number.isNaN(ts)) return false
-  return Date.now() - ts <= days * 24 * 60 * 60 * 1000
-}
-
 export function RedemptionsPage() {
   const navigate = useNavigate()
-  const [items, setItems] = useState(getRedemptions)
+  const [items, setItems] = useState<Redemption[]>([])
+  const [summary, setSummary] = useState<RedemptionListResponse['summary']>({
+    total: 0,
+    today: 0,
+    thisMonth: 0,
+    successful: 0,
+  })
+  const [filterOptions, setFilterOptions] = useState<RedemptionListResponse['filterOptions']>({
+    members: [],
+    merchants: [],
+    offers: [],
+  })
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: CMS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [merchant, setMerchant] = useState('all')
   const [member, setMember] = useState('all')
   const [offer, setOffer] = useState('all')
@@ -55,54 +72,60 @@ export function RedemptionsPage() {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
   const [exportMsg, setExportMsg] = useState<string | null>(null)
 
-  useEffect(() => subscribeRedemptions(() => setItems(getRedemptions())), [])
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
-  const merchantOptions = useMemo(() => {
-    const map = new Map<string, string>()
-    items.forEach((r) => map.set(r.merchantId, r.merchantName))
-    return [...map.entries()].map(([value, label]) => ({ value, label }))
-  }, [items])
+  const loadRedemptions = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await listRedemptionsApi({
+        page,
+        pageSize: CMS_PAGE_SIZE,
+        search: debouncedSearch,
+        status,
+        memberId: member,
+        merchantId: merchant,
+        offerId: offer,
+        date: dateFilter,
+      })
+      setItems(data.redemptions)
+      setSummary(data.summary)
+      setFilterOptions(data.filterOptions)
+      setPagination(data.pagination)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load redemptions')
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
+  }, [page, debouncedSearch, status, member, merchant, offer, dateFilter])
 
-  const memberOptions = useMemo(() => {
-    const map = new Map<string, string>()
-    items.forEach((r) => map.set(r.memberId, r.memberName))
-    return [...map.entries()].map(([value, label]) => ({ value, label }))
-  }, [items])
+  useEffect(() => {
+    void loadRedemptions()
+  }, [loadRedemptions])
 
-  const offerOptions = useMemo(() => {
-    const map = new Map<string, string>()
-    items.forEach((r) => map.set(r.offerId, r.offerTitle))
-    return [...map.entries()].map(([value, label]) => ({ value, label }))
-  }, [items])
-
-  const filtered = useMemo(() => {
-    return items.filter((r) => {
-      if (merchant !== 'all' && r.merchantId !== merchant) return false
-      if (member !== 'all' && r.memberId !== member) return false
-      if (offer !== 'all' && r.offerId !== offer) return false
-      if (status !== 'all' && r.status !== status) return false
-      if (dateFilter !== 'any') {
-        const days = dateFilter === '7d' ? 7 : dateFilter === '30d' ? 30 : 90
-        if (!withinLastDays(r.redeemedAt, days)) return false
-      }
-      if (search.trim()) {
-        const q = search.toLowerCase()
-        const hay =
-          `${r.redemptionCode} ${r.memberName} ${r.merchantName} ${r.offerTitle} ${r.id}`.toLowerCase()
-        if (!hay.includes(q)) return false
-      }
-      return true
-    })
-  }, [items, merchant, member, offer, status, dateFilter, search])
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / CMS_PAGE_SIZE))
-  const currentPage = Math.min(page, totalPages)
-  const pageItems = filtered.slice(
-    (currentPage - 1) * CMS_PAGE_SIZE,
-    currentPage * CMS_PAGE_SIZE,
+  const merchantOptions = useMemo(
+    () => filterOptions.merchants.map((m) => ({ value: m.id, label: m.name })),
+    [filterOptions.merchants],
   )
-  const rangeStart = filtered.length === 0 ? 0 : (currentPage - 1) * CMS_PAGE_SIZE + 1
-  const rangeEnd = Math.min(currentPage * CMS_PAGE_SIZE, filtered.length)
+  const memberOptions = useMemo(
+    () => filterOptions.members.map((m) => ({ value: m.id, label: m.name })),
+    [filterOptions.members],
+  )
+  const offerOptions = useMemo(
+    () => filterOptions.offers.map((o) => ({ value: o.id, label: o.title })),
+    [filterOptions.offers],
+  )
+
+  const pageItems = items
+  const totalPages = Math.max(1, pagination.totalPages)
+  const currentPage = Math.min(page, totalPages)
+  const total = pagination.total
+  const rangeStart = total === 0 ? 0 : (currentPage - 1) * CMS_PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * CMS_PAGE_SIZE, total)
   const allPageSelected =
     pageItems.length > 0 && pageItems.every((r) => selectedIds.includes(r.id))
   const pageNumbers = useMemo(
@@ -169,7 +192,7 @@ export function RedemptionsPage() {
   }
 
   function handleExport(): void {
-    setExportMsg(`Exported ${filtered.length} redemptions`)
+    setExportMsg(`Exported ${total} redemptions`)
     window.setTimeout(() => setExportMsg(null), 2500)
   }
 
@@ -206,11 +229,12 @@ export function RedemptionsPage() {
 
       <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryCard label="Total redemptions" value={String(REDEMPTION_SUMMARY.total)} />
-          <SummaryCard label="Today" value={String(REDEMPTION_SUMMARY.today)} />
-          <SummaryCard label="This month" value={String(REDEMPTION_SUMMARY.thisMonth)} />
-          <SummaryCard label="Successful" value={String(REDEMPTION_SUMMARY.successful)} />
+          <SummaryCard label="Total redemptions" value={String(summary.total)} />
+          <SummaryCard label="Today" value={String(summary.today)} />
+          <SummaryCard label="This month" value={String(summary.thisMonth)} />
+          <SummaryCard label="Successful" value={String(summary.successful)} />
         </div>
+        {error ? <p className="mb-3 text-[12px] text-action">{error}</p> : null}
 
         <div className="mb-4 flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2.5 lg:flex-row lg:items-center">
@@ -242,10 +266,7 @@ export function RedemptionsPage() {
                   setMerchant(v)
                   setPage(1)
                 }}
-                options={[
-                  { value: 'all', label: 'All' },
-                  ...merchantOptions,
-                ]}
+                options={[{ value: 'all', label: 'All' }, ...merchantOptions]}
               />
               <FilterPill
                 label="Member"
@@ -349,6 +370,13 @@ export function RedemptionsPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {loading && pageItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
+                        Loading redemptions…
+                      </td>
+                    </tr>
+                  ) : null}
                   {pageItems.map((row) => {
                     const selected = selectedIds.includes(row.id)
                     return (
@@ -405,7 +433,7 @@ export function RedemptionsPage() {
                       </tr>
                     )
                   })}
-                  {pageItems.length === 0 ? (
+                  {!loading && pageItems.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
                         No redemptions match your filters.
@@ -419,7 +447,7 @@ export function RedemptionsPage() {
 
           <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {filtered.length}
+              Showing {rangeStart}–{rangeEnd} of {total}
             </p>
             <div className="flex flex-wrap items-center gap-1">
               <PagerButton

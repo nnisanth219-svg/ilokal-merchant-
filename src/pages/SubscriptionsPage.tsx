@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { SubscriptionStatusBadge } from '../components/subscriptions/SubscriptionStatusBadge'
@@ -18,14 +18,15 @@ import {
   ViewportAwareMenu,
   type ViewportMenuItem,
 } from '../components/ui/ViewportAwareMenu'
-import { SUBSCRIPTION_SUMMARY } from '../data/subscriptions'
+import { useAuth } from '../context/AuthContext'
+import { canEditInModule } from '../types/auth'
 import {
-  bulkSetSubscriptionStatus,
-  getSubscriptions,
-  renewSubscription,
-  setSubscriptionStatus,
-  subscribeSubscriptions,
-} from '../services/subscriptionStore'
+  bulkUpdateSubscriptionStatusApi,
+  listSubscriptionsApi,
+  renewSubscriptionApi,
+  updateSubscriptionStatusApi,
+  type SubscriptionListResponse,
+} from '../services/subscriptionApi'
 import {
   SUBSCRIPTION_PLAN_FILTERS,
   SUBSCRIPTION_STATUS_FILTERS,
@@ -60,18 +61,27 @@ function initials(name: string): string {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
 }
 
-function expiryWithinDays(expiryDate: string, days: number): boolean {
-  const expiry = new Date(expiryDate).getTime()
-  if (Number.isNaN(expiry)) return false
-  const now = Date.now()
-  const end = now + days * 24 * 60 * 60 * 1000
-  return expiry >= now && expiry <= end
-}
-
 export function SubscriptionsPage() {
   const navigate = useNavigate()
-  const [items, setItems] = useState(getSubscriptions)
+  const { user } = useAuth()
+  const canEdit = canEditInModule(user, 'Subscriptions')
+  const [items, setItems] = useState<Subscription[]>([])
+  const [summary, setSummary] = useState<SubscriptionListResponse['summary']>({
+    total: 0,
+    active: 0,
+    expiringSoon: 0,
+    expired: 0,
+  })
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: CMS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [plan, setPlan] = useState<PlanFilter>('all')
   const [billing, setBilling] = useState<BillingFilter>('all')
@@ -88,34 +98,45 @@ export function SubscriptionsPage() {
     null,
   )
 
-  useEffect(() => subscribeSubscriptions(() => setItems(getSubscriptions())), [])
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
-  const filtered = useMemo(() => {
-    return items.filter((s) => {
-      if (status !== 'all' && s.status !== status) return false
-      if (plan !== 'all' && s.plan !== plan) return false
-      if (billing !== 'all' && s.billing !== billing) return false
-      if (expiry !== 'any') {
-        const days = expiry === '7d' ? 7 : expiry === '30d' ? 30 : 90
-        if (!expiryWithinDays(s.expiryDate, days)) return false
-      }
-      if (search.trim()) {
-        const q = search.toLowerCase()
-        const hay = `${s.memberName} ${s.memberEmail} ${s.subscriptionCode} ${s.id}`.toLowerCase()
-        if (!hay.includes(q)) return false
-      }
-      return true
-    })
-  }, [items, status, plan, billing, expiry, search])
+  const loadSubscriptions = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await listSubscriptionsApi({
+        page,
+        pageSize: CMS_PAGE_SIZE,
+        search: debouncedSearch,
+        status,
+        plan,
+        billing,
+        expiry,
+      })
+      setItems(data.subscriptions)
+      setSummary(data.summary)
+      setPagination(data.pagination)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load subscriptions')
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
+  }, [page, debouncedSearch, status, plan, billing, expiry])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / CMS_PAGE_SIZE))
+  useEffect(() => {
+    void loadSubscriptions()
+  }, [loadSubscriptions])
+
+  const pageItems = items
+  const totalPages = Math.max(1, pagination.totalPages)
   const currentPage = Math.min(page, totalPages)
-  const pageItems = filtered.slice(
-    (currentPage - 1) * CMS_PAGE_SIZE,
-    currentPage * CMS_PAGE_SIZE,
-  )
-  const rangeStart = filtered.length === 0 ? 0 : (currentPage - 1) * CMS_PAGE_SIZE + 1
-  const rangeEnd = Math.min(currentPage * CMS_PAGE_SIZE, filtered.length)
+  const total = pagination.total
+  const rangeStart = total === 0 ? 0 : (currentPage - 1) * CMS_PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * CMS_PAGE_SIZE, total)
   const allPageSelected =
     pageItems.length > 0 && pageItems.every((s) => selectedIds.includes(s.id))
   const pageNumbers = useMemo(
@@ -142,26 +163,39 @@ export function SubscriptionsPage() {
           label: 'View payment history',
           onClick: () => navigate(`/subscriptions/${activeItem.id}`),
         },
-        {
-          id: 'renew',
-          label: 'Renew',
-          onClick: () => {
-            renewSubscription(activeItem.id)
-            closeMenu()
-          },
-        },
-        {
-          id: 'suspend',
-          label: 'Suspend',
-          onClick: () => setConfirm({ type: 'suspend', item: activeItem }),
-        },
-        {
-          id: 'cancel',
-          label: 'Cancel subscription',
-          destructive: true,
-          dividerBefore: true,
-          onClick: () => setConfirm({ type: 'cancel', item: activeItem }),
-        },
+        ...(canEdit
+          ? [
+              {
+                id: 'renew',
+                label: 'Renew',
+                onClick: () => {
+                  void (async () => {
+                    try {
+                      setError(null)
+                      await renewSubscriptionApi(activeItem.id)
+                      closeMenu()
+                      await loadSubscriptions()
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Unable to renew subscription')
+                      closeMenu()
+                    }
+                  })()
+                },
+              },
+              {
+                id: 'suspend',
+                label: 'Suspend',
+                onClick: () => setConfirm({ type: 'suspend', item: activeItem }),
+              },
+              {
+                id: 'cancel',
+                label: 'Cancel subscription',
+                destructive: true,
+                dividerBefore: true,
+                onClick: () => setConfirm({ type: 'cancel', item: activeItem }),
+              },
+            ]
+          : []),
       ]
     : []
 
@@ -196,22 +230,37 @@ export function SubscriptionsPage() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
-  function handleConfirm(): void {
+  async function handleConfirm(): Promise<void> {
     if (!confirm) return
-    if (confirm.type === 'suspend' || confirm.type === 'cancel') {
-      setSubscriptionStatus(confirm.item.id, 'suspended')
+    try {
+      setError(null)
+      if (confirm.type === 'suspend' || confirm.type === 'cancel') {
+        await updateSubscriptionStatusApi(confirm.item.id, 'suspended')
+      }
+      setConfirm(null)
+      closeMenu()
+      await loadSubscriptions()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update subscription')
+      setConfirm(null)
+      closeMenu()
     }
-    setConfirm(null)
-    closeMenu()
   }
 
-  function runBulk(action: 'activate' | 'suspend' | 'cancel'): void {
-    if (action === 'activate') bulkSetSubscriptionStatus(selectedIds, 'active')
-    if (action === 'suspend' || action === 'cancel') {
-      bulkSetSubscriptionStatus(selectedIds, 'suspended')
+  async function runBulk(action: 'activate' | 'suspend' | 'cancel'): Promise<void> {
+    try {
+      setError(null)
+      if (action === 'activate') await bulkUpdateSubscriptionStatusApi(selectedIds, 'active')
+      if (action === 'suspend' || action === 'cancel') {
+        await bulkUpdateSubscriptionStatusApi(selectedIds, 'suspended')
+      }
+      setSelectedIds([])
+      setBulkConfirm(null)
+      await loadSubscriptions()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update subscriptions')
+      setBulkConfirm(null)
     }
-    setSelectedIds([])
-    setBulkConfirm(null)
   }
 
   return (
@@ -227,11 +276,12 @@ export function SubscriptionsPage() {
 
       <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryCard label="Total subscriptions" value={String(SUBSCRIPTION_SUMMARY.total)} />
-          <SummaryCard label="Active" value={String(SUBSCRIPTION_SUMMARY.active)} />
-          <SummaryCard label="Expiring soon" value={String(SUBSCRIPTION_SUMMARY.expiringSoon)} />
-          <SummaryCard label="Expired" value={String(SUBSCRIPTION_SUMMARY.expired)} />
+          <SummaryCard label="Total subscriptions" value={String(summary.total)} />
+          <SummaryCard label="Active" value={String(summary.active)} />
+          <SummaryCard label="Expiring soon" value={String(summary.expiringSoon)} />
+          <SummaryCard label="Expired" value={String(summary.expired)} />
         </div>
+        {error ? <p className="mb-3 text-[12px] text-action">{error}</p> : null}
 
         <div className="mb-4 flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2.5 lg:flex-row lg:items-center">
@@ -305,7 +355,7 @@ export function SubscriptionsPage() {
           </div>
         </div>
 
-        {selectedIds.length > 0 ? (
+        {selectedIds.length > 0 && canEdit ? (
           <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3 rounded-xl bg-navy px-4 py-3">
             <span className="text-[13px] font-semibold text-white">
               {selectedIds.length} selected
@@ -349,6 +399,13 @@ export function SubscriptionsPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {loading && pageItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
+                        Loading subscriptions…
+                      </td>
+                    </tr>
+                  ) : null}
                   {pageItems.map((row) => {
                     const selected = selectedIds.includes(row.id)
                     return (
@@ -418,7 +475,7 @@ export function SubscriptionsPage() {
                       </tr>
                     )
                   })}
-                  {pageItems.length === 0 ? (
+                  {!loading && pageItems.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
                         No subscriptions match your filters.
@@ -432,7 +489,7 @@ export function SubscriptionsPage() {
 
           <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {filtered.length}
+              Showing {rangeStart}–{rangeEnd} of {total}
             </p>
             <div className="flex flex-wrap items-center gap-1">
               <PagerButton
@@ -475,7 +532,7 @@ export function SubscriptionsPage() {
         }
         confirmLabel="Suspend"
         onCancel={() => setConfirm(null)}
-        onConfirm={handleConfirm}
+        onConfirm={() => void handleConfirm()}
       />
       <ConfirmDialog
         open={confirm?.type === 'cancel'}
@@ -488,32 +545,32 @@ export function SubscriptionsPage() {
         confirmLabel="Cancel subscription"
         destructive
         onCancel={() => setConfirm(null)}
-        onConfirm={handleConfirm}
+        onConfirm={() => void handleConfirm()}
       />
       <ConfirmDialog
         open={bulkConfirm === 'activate'}
         title="Bulk activate"
-        message={`Activate ${selectedIds.length} subscriptions? Frontend only.`}
+        message={`Activate ${selectedIds.length} subscriptions?`}
         confirmLabel="Activate"
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('activate')}
+        onConfirm={() => void runBulk('activate')}
       />
       <ConfirmDialog
         open={bulkConfirm === 'suspend'}
         title="Bulk suspend"
-        message={`Suspend ${selectedIds.length} subscriptions? Frontend only.`}
+        message={`Suspend ${selectedIds.length} subscriptions?`}
         confirmLabel="Suspend"
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('suspend')}
+        onConfirm={() => void runBulk('suspend')}
       />
       <ConfirmDialog
         open={bulkConfirm === 'cancel'}
         title="Bulk cancel"
-        message={`Cancel ${selectedIds.length} subscriptions? Frontend only.`}
+        message={`Cancel ${selectedIds.length} subscriptions?`}
         confirmLabel="Cancel"
         destructive
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('cancel')}
+        onConfirm={() => void runBulk('cancel')}
       />
     </div>
   )

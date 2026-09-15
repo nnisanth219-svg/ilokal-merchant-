@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { ReviewStatusBadge } from '../components/reviews/ReviewStatusBadge'
@@ -18,15 +18,16 @@ import {
   ViewportAwareMenu,
   type ViewportMenuItem,
 } from '../components/ui/ViewportAwareMenu'
-import { REVIEW_SUMMARY } from '../data/reviews'
+import { useAuth } from '../context/AuthContext'
+import { canDeleteInModule, canEditInModule } from '../types/auth'
 import {
-  bulkDeleteReviews,
-  bulkSetReviewStatus,
-  deleteReview,
-  getReviews,
-  setReviewStatus,
-  subscribeReviews,
-} from '../services/reviewStore'
+  bulkSoftDeleteReviewsApi,
+  bulkUpdateReviewStatusApi,
+  listReviewsApi,
+  softDeleteReviewApi,
+  updateReviewStatusApi,
+  type ReviewListResponse,
+} from '../services/reviewApi'
 import {
   REVIEW_RATING_FILTERS,
   REVIEW_STATUS_FILTERS,
@@ -49,16 +50,32 @@ function stars(rating: number): string {
   return `${'★'.repeat(safe)}${'☆'.repeat(5 - safe)}`
 }
 
-function withinLastDays(iso: string, days: number): boolean {
-  const ts = new Date(iso).getTime()
-  if (Number.isNaN(ts)) return false
-  return Date.now() - ts <= days * 24 * 60 * 60 * 1000
-}
-
 export function ReviewsPage() {
   const navigate = useNavigate()
-  const [items, setItems] = useState(getReviews)
+  const { user } = useAuth()
+  const canEdit = canEditInModule(user, 'Reviews')
+  const canDelete = canDeleteInModule(user, 'Reviews')
+  const canMutate = canEdit || canDelete
+  const [items, setItems] = useState<ReviewItem[]>([])
+  const [summary, setSummary] = useState<ReviewListResponse['summary']>({
+    total: 0,
+    averageRating: 0,
+    fiveStar: 0,
+    needsAttention: 0,
+  })
+  const [filterOptions, setFilterOptions] = useState<ReviewListResponse['filterOptions']>({
+    merchants: [],
+  })
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: CMS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [rating, setRating] = useState('all')
   const [merchant, setMerchant] = useState('all')
   const [status, setStatus] = useState<StatusFilter>('all')
@@ -70,40 +87,51 @@ export function ReviewsPage() {
   const [confirmDelete, setConfirmDelete] = useState<ReviewItem | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState<'reviewed' | 'hide' | 'delete' | null>(null)
 
-  useEffect(() => subscribeReviews(() => setItems(getReviews())), [])
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
-  const merchantOptions = useMemo(() => {
-    const map = new Map<string, string>()
-    items.forEach((r) => map.set(r.merchantId, r.merchantName))
-    return [...map.entries()].map(([value, label]) => ({ value, label }))
-  }, [items])
+  const loadReviews = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await listReviewsApi({
+        page,
+        pageSize: CMS_PAGE_SIZE,
+        search: debouncedSearch,
+        status,
+        rating,
+        merchantId: merchant,
+        date: dateFilter,
+      })
+      setItems(data.reviews)
+      setSummary(data.summary)
+      setFilterOptions(data.filterOptions)
+      setPagination(data.pagination)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load reviews')
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
+  }, [page, debouncedSearch, status, rating, merchant, dateFilter])
 
-  const filtered = useMemo(() => {
-    return items.filter((r) => {
-      if (rating !== 'all' && String(r.rating) !== rating) return false
-      if (merchant !== 'all' && r.merchantId !== merchant) return false
-      if (status !== 'all' && r.status !== status) return false
-      if (dateFilter !== 'any') {
-        const days = dateFilter === '7d' ? 7 : dateFilter === '30d' ? 30 : 90
-        if (!withinLastDays(r.submittedAt, days)) return false
-      }
-      if (search.trim()) {
-        const q = search.toLowerCase()
-        const hay = `${r.memberName} ${r.merchantName} ${r.text} ${r.id}`.toLowerCase()
-        if (!hay.includes(q)) return false
-      }
-      return true
-    })
-  }, [items, rating, merchant, status, dateFilter, search])
+  useEffect(() => {
+    void loadReviews()
+  }, [loadReviews])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / CMS_PAGE_SIZE))
-  const currentPage = Math.min(page, totalPages)
-  const pageItems = filtered.slice(
-    (currentPage - 1) * CMS_PAGE_SIZE,
-    currentPage * CMS_PAGE_SIZE,
+  const merchantOptions = useMemo(
+    () => filterOptions.merchants.map((m) => ({ value: m.id, label: m.name })),
+    [filterOptions.merchants],
   )
-  const rangeStart = filtered.length === 0 ? 0 : (currentPage - 1) * CMS_PAGE_SIZE + 1
-  const rangeEnd = Math.min(currentPage * CMS_PAGE_SIZE, filtered.length)
+
+  const pageItems = items
+  const totalPages = Math.max(1, pagination.totalPages)
+  const currentPage = Math.min(page, totalPages)
+  const total = pagination.total
+  const rangeStart = total === 0 ? 0 : (currentPage - 1) * CMS_PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * CMS_PAGE_SIZE, total)
   const allPageSelected =
     pageItems.length > 0 && pageItems.every((r) => selectedIds.includes(r.id))
   const pageNumbers = useMemo(
@@ -130,29 +158,55 @@ export function ReviewsPage() {
           label: 'View merchant',
           onClick: () => navigate(`/merchants/${activeItem.merchantId}`),
         },
-        {
-          id: 'reviewed',
-          label: 'Mark as reviewed',
-          onClick: () => {
-            setReviewStatus(activeItem.id, 'published')
-            closeMenu()
-          },
-        },
-        {
-          id: 'hide',
-          label: 'Hide review',
-          onClick: () => {
-            setReviewStatus(activeItem.id, 'hidden')
-            closeMenu()
-          },
-        },
-        {
-          id: 'delete',
-          label: 'Delete review',
-          destructive: true,
-          dividerBefore: true,
-          onClick: () => setConfirmDelete(activeItem),
-        },
+        ...(canEdit
+          ? [
+              {
+                id: 'reviewed',
+                label: 'Mark as reviewed',
+                onClick: () => {
+                  void (async () => {
+                    try {
+                      setError(null)
+                      await updateReviewStatusApi(activeItem.id, 'published')
+                      closeMenu()
+                      await loadReviews()
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Unable to update review')
+                      closeMenu()
+                    }
+                  })()
+                },
+              },
+              {
+                id: 'hide',
+                label: 'Hide review',
+                onClick: () => {
+                  void (async () => {
+                    try {
+                      setError(null)
+                      await updateReviewStatusApi(activeItem.id, 'hidden')
+                      closeMenu()
+                      await loadReviews()
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Unable to update review')
+                      closeMenu()
+                    }
+                  })()
+                },
+              },
+            ]
+          : []),
+        ...(canDelete
+          ? [
+              {
+                id: 'delete',
+                label: 'Delete review',
+                destructive: true,
+                dividerBefore: true,
+                onClick: () => setConfirmDelete(activeItem),
+              },
+            ]
+          : []),
       ]
     : []
 
@@ -187,12 +241,34 @@ export function ReviewsPage() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
-  function runBulk(action: 'reviewed' | 'hide' | 'delete'): void {
-    if (action === 'reviewed') bulkSetReviewStatus(selectedIds, 'published')
-    if (action === 'hide') bulkSetReviewStatus(selectedIds, 'hidden')
-    if (action === 'delete') bulkDeleteReviews(selectedIds)
-    setSelectedIds([])
-    setBulkConfirm(null)
+  async function handleDeleteConfirm(): Promise<void> {
+    if (!confirmDelete) return
+    try {
+      setError(null)
+      await softDeleteReviewApi(confirmDelete.id)
+      setConfirmDelete(null)
+      closeMenu()
+      await loadReviews()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to delete review')
+      setConfirmDelete(null)
+      closeMenu()
+    }
+  }
+
+  async function runBulk(action: 'reviewed' | 'hide' | 'delete'): Promise<void> {
+    try {
+      setError(null)
+      if (action === 'reviewed') await bulkUpdateReviewStatusApi(selectedIds, 'published')
+      if (action === 'hide') await bulkUpdateReviewStatusApi(selectedIds, 'hidden')
+      if (action === 'delete') await bulkSoftDeleteReviewsApi(selectedIds)
+      setSelectedIds([])
+      setBulkConfirm(null)
+      await loadReviews()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update reviews')
+      setBulkConfirm(null)
+    }
   }
 
   return (
@@ -208,11 +284,12 @@ export function ReviewsPage() {
 
       <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryCard label="Total reviews" value={String(REVIEW_SUMMARY.total)} />
-          <SummaryCard label="Average rating" value={REVIEW_SUMMARY.averageRating} />
-          <SummaryCard label="5-star reviews" value={String(REVIEW_SUMMARY.fiveStar)} />
-          <SummaryCard label="Needs attention" value={String(REVIEW_SUMMARY.needsAttention)} />
+          <SummaryCard label="Total reviews" value={String(summary.total)} />
+          <SummaryCard label="Average rating" value={summary.averageRating.toFixed(1)} />
+          <SummaryCard label="5-star reviews" value={String(summary.fiveStar)} />
+          <SummaryCard label="Needs attention" value={String(summary.needsAttention)} />
         </div>
+        {error ? <p className="mb-3 text-[12px] text-action">{error}</p> : null}
 
         <div className="mb-4 flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2.5 lg:flex-row lg:items-center">
@@ -292,21 +369,27 @@ export function ReviewsPage() {
           </div>
         </div>
 
-        {selectedIds.length > 0 ? (
+        {selectedIds.length > 0 && canMutate ? (
           <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3 rounded-xl bg-navy px-4 py-3">
             <span className="text-[13px] font-semibold text-white">
               {selectedIds.length} selected
             </span>
             <span className="text-[12px] font-medium text-white/55">Bulk:</span>
-            <BulkBtn label="Mark as reviewed" onClick={() => setBulkConfirm('reviewed')} />
-            <BulkBtn label="Hide" onClick={() => setBulkConfirm('hide')} />
-            <button
-              type="button"
-              onClick={() => setBulkConfirm('delete')}
-              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
-            >
-              Delete
-            </button>
+            {canEdit ? (
+              <>
+                <BulkBtn label="Mark as reviewed" onClick={() => setBulkConfirm('reviewed')} />
+                <BulkBtn label="Hide" onClick={() => setBulkConfirm('hide')} />
+              </>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => setBulkConfirm('delete')}
+                className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
+              >
+                Delete
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -335,6 +418,13 @@ export function ReviewsPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {loading && pageItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-14 text-center text-[13px] text-muted">
+                        Loading reviews…
+                      </td>
+                    </tr>
+                  ) : null}
                   {pageItems.map((row) => {
                     const selected = selectedIds.includes(row.id)
                     return (
@@ -389,7 +479,7 @@ export function ReviewsPage() {
                       </tr>
                     )
                   })}
-                  {pageItems.length === 0 ? (
+                  {!loading && pageItems.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-4 py-14 text-center text-[13px] text-muted">
                         No reviews match your filters.
@@ -403,7 +493,7 @@ export function ReviewsPage() {
 
           <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {filtered.length}
+              Showing {rangeStart}–{rangeEnd} of {total}
             </p>
             <div className="flex flex-wrap items-center gap-1">
               <PagerButton
@@ -447,36 +537,32 @@ export function ReviewsPage() {
         confirmLabel="Delete review"
         destructive
         onCancel={() => setConfirmDelete(null)}
-        onConfirm={() => {
-          if (confirmDelete) deleteReview(confirmDelete.id)
-          setConfirmDelete(null)
-          closeMenu()
-        }}
+        onConfirm={() => void handleDeleteConfirm()}
       />
       <ConfirmDialog
         open={bulkConfirm === 'reviewed'}
         title="Mark as reviewed"
-        message={`Mark ${selectedIds.length} reviews as published? Frontend only.`}
+        message={`Mark ${selectedIds.length} reviews as published?`}
         confirmLabel="Mark as reviewed"
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('reviewed')}
+        onConfirm={() => void runBulk('reviewed')}
       />
       <ConfirmDialog
         open={bulkConfirm === 'hide'}
         title="Hide reviews"
-        message={`Hide ${selectedIds.length} reviews? Frontend only.`}
+        message={`Hide ${selectedIds.length} reviews?`}
         confirmLabel="Hide"
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('hide')}
+        onConfirm={() => void runBulk('hide')}
       />
       <ConfirmDialog
         open={bulkConfirm === 'delete'}
         title="Bulk delete"
-        message={`Delete ${selectedIds.length} reviews? Frontend only.`}
+        message={`Delete ${selectedIds.length} reviews?`}
         confirmLabel="Delete"
         destructive
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('delete')}
+        onConfirm={() => void runBulk('delete')}
       />
     </div>
   )

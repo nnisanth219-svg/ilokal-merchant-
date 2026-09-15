@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { MemberStatusBadge } from '../components/members/MemberStatusBadge'
@@ -7,7 +7,17 @@ import {
   ViewportAwareMenu,
   type ViewportMenuItem,
 } from '../components/ui/ViewportAwareMenu'
-import { MEMBER_LIST_DISPLAY } from '../data/members'
+import { useAuth } from '../context/AuthContext'
+import {
+  bulkSoftDeleteMembersApi,
+  bulkUpdateMemberStatusApi,
+  listMembersApi,
+  restoreMemberApi,
+  softDeleteMemberApi,
+  updateMemberStatusApi,
+  type MemberListResponse,
+} from '../services/memberApi'
+import { canDeleteInModule, canEditInModule } from '../types/auth'
 import {
   MEMBER_PLAN_FILTERS,
   MEMBER_STATUS_FILTERS,
@@ -16,14 +26,6 @@ import {
   type MembershipPlan,
   type MemberStatus,
 } from '../types/member'
-import {
-  bulkSetMemberStatus,
-  bulkSoftDeleteMembers,
-  getMembers,
-  setMemberStatus,
-  softDeleteMember,
-  subscribeMembers,
-} from '../services/memberStore'
 
 const PAGE_SIZE = 25
 
@@ -64,48 +66,83 @@ function initials(name: string): string {
 
 export function MembersPage() {
   const navigate = useNavigate()
-  const [members, setMembers] = useState(getMembers)
+  const { user } = useAuth()
+  const canEdit = canEditInModule(user, 'Members')
+  const canDelete = canDeleteInModule(user, 'Members')
+  const canMutate = canEdit || canDelete
+  const [members, setMembers] = useState<Member[]>([])
+  const [summary, setSummary] = useState<MemberListResponse['summary']>({
+    total: 0,
+    active: 0,
+    expired: 0,
+    suspended: 0,
+    inactive: 0,
+  })
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [plan, setPlan] = useState<PlanFilter>('all')
   const [joined, setJoined] = useState<JoinedFilter>('any')
+  const [includeDeleted, setIncludeDeleted] = useState(false)
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
   const [confirm, setConfirm] = useState<{
-    type: 'deactivate' | 'delete'
+    type: 'deactivate' | 'delete' | 'restore'
     member: Member
   } | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState<'activate' | 'deactivate' | 'delete' | null>(
     null,
   )
 
-  useEffect(() => subscribeMembers(() => setMembers(getMembers())), [])
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
-  const filtered = useMemo(() => {
-    return members.filter((m) => {
-      if (status !== 'all' && m.status !== status) return false
-      if (plan !== 'all' && m.plan !== plan) return false
-      if (joined !== 'any') {
-        const created = new Date(m.joinedAt).getTime()
-        const days = joined === '7d' ? 7 : joined === '30d' ? 30 : 90
-        if (Date.now() - created > days * 24 * 60 * 60 * 1000) return false
-      }
-      if (search.trim()) {
-        const q = search.toLowerCase()
-        const hay = `${m.fullName} ${m.email} ${m.phone} ${m.memberCode}`.toLowerCase()
-        if (!hay.includes(q)) return false
-      }
-      return true
-    })
-  }, [members, status, plan, joined, search])
+  const loadMembers = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await listMembersApi({
+        page,
+        pageSize: PAGE_SIZE,
+        search: debouncedSearch,
+        status,
+        plan,
+        joined,
+        includeDeleted: includeDeleted || status === 'deleted',
+      })
+      setMembers(data.members)
+      setSummary(data.summary)
+      setPagination(data.pagination)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load members')
+      setMembers([])
+    } finally {
+      setLoading(false)
+    }
+  }, [page, debouncedSearch, status, plan, joined, includeDeleted])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  useEffect(() => {
+    void loadMembers()
+  }, [loadMembers])
+
+  const pageItems = members
+  const totalPages = Math.max(1, pagination.totalPages)
   const currentPage = Math.min(page, totalPages)
-  const pageItems = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
-  const rangeStart = filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
-  const rangeEnd = Math.min(currentPage * PAGE_SIZE, filtered.length)
+  const total = pagination.total
+  const rangeStart = total === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, total)
   const allPageSelected =
     pageItems.length > 0 && pageItems.every((m) => selectedIds.includes(m.id))
 
@@ -127,18 +164,39 @@ export function MembersPage() {
           label: 'View details',
           onClick: () => navigate(`/members/${activeMember.id}`),
         },
-        {
-          id: 'deactivate',
-          label: 'Deactivate',
-          onClick: () => setConfirm({ type: 'deactivate', member: activeMember }),
-        },
-        {
-          id: 'delete',
-          label: 'Delete',
-          destructive: true,
-          dividerBefore: true,
-          onClick: () => setConfirm({ type: 'delete', member: activeMember }),
-        },
+        ...(activeMember.status === 'deleted'
+          ? canDelete
+            ? [
+                {
+                  id: 'restore',
+                  label: 'Restore',
+                  onClick: () => setConfirm({ type: 'restore' as const, member: activeMember }),
+                },
+              ]
+            : []
+          : [
+              ...(canEdit
+                ? [
+                    {
+                      id: 'deactivate',
+                      label: 'Deactivate',
+                      onClick: () =>
+                        setConfirm({ type: 'deactivate' as const, member: activeMember }),
+                    },
+                  ]
+                : []),
+              ...(canDelete
+                ? [
+                    {
+                      id: 'delete',
+                      label: 'Delete',
+                      destructive: true,
+                      dividerBefore: true,
+                      onClick: () => setConfirm({ type: 'delete' as const, member: activeMember }),
+                    },
+                  ]
+                : []),
+            ]),
       ]
     : []
 
@@ -173,20 +231,38 @@ export function MembersPage() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
-  function handleConfirm(): void {
+  async function handleConfirm(): Promise<void> {
     if (!confirm) return
-    if (confirm.type === 'deactivate') setMemberStatus(confirm.member.id, 'inactive')
-    if (confirm.type === 'delete') softDeleteMember(confirm.member.id)
-    setConfirm(null)
-    closeMenu()
+    try {
+      setError(null)
+      if (confirm.type === 'deactivate') {
+        await updateMemberStatusApi(confirm.member.id, 'inactive')
+      }
+      if (confirm.type === 'delete') await softDeleteMemberApi(confirm.member.id)
+      if (confirm.type === 'restore') await restoreMemberApi(confirm.member.id)
+      setConfirm(null)
+      closeMenu()
+      await loadMembers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update member')
+      setConfirm(null)
+      closeMenu()
+    }
   }
 
-  function runBulk(action: 'activate' | 'deactivate' | 'delete'): void {
-    if (action === 'activate') bulkSetMemberStatus(selectedIds, 'active')
-    if (action === 'deactivate') bulkSetMemberStatus(selectedIds, 'inactive')
-    if (action === 'delete') bulkSoftDeleteMembers(selectedIds)
-    setSelectedIds([])
-    setBulkConfirm(null)
+  async function runBulk(action: 'activate' | 'deactivate' | 'delete'): Promise<void> {
+    try {
+      setError(null)
+      if (action === 'activate') await bulkUpdateMemberStatusApi(selectedIds, 'active')
+      if (action === 'deactivate') await bulkUpdateMemberStatusApi(selectedIds, 'inactive')
+      if (action === 'delete') await bulkSoftDeleteMembersApi(selectedIds)
+      setSelectedIds([])
+      setBulkConfirm(null)
+      await loadMembers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update members')
+      setBulkConfirm(null)
+    }
   }
 
   return (
@@ -219,8 +295,12 @@ export function MembersPage() {
       <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
         <div className="mb-4 shrink-0">
           <p className="text-[15px] font-semibold text-navy">
-            Members · <span className="text-muted">{MEMBER_LIST_DISPLAY.totalLabel} total</span>
+            Members ·{' '}
+            <span className="text-muted">
+              {summary.total.toLocaleString()} total · {summary.active.toLocaleString()} active
+            </span>
           </p>
+          {error ? <p className="mt-1 text-[12px] text-action">{error}</p> : null}
         </div>
 
         <div className="mb-4 flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -286,25 +366,44 @@ export function MembersPage() {
                   { value: '90d', label: 'Last 90 days' },
                 ]}
               />
+              <button
+                type="button"
+                onClick={() => {
+                  setIncludeDeleted((v) => !v)
+                  setPage(1)
+                }}
+                className={[
+                  'inline-flex h-[38px] min-h-[38px] items-center rounded-lg border border-border bg-white px-3 text-[12px] font-semibold transition hover:bg-page',
+                  includeDeleted ? 'text-navy' : 'text-[#3B6FB6]',
+                ].join(' ')}
+              >
+                {includeDeleted ? 'Hide deleted' : 'Show deleted'}
+              </button>
             </div>
           </div>
         </div>
 
-        {selectedIds.length > 0 ? (
+        {selectedIds.length > 0 && canMutate ? (
           <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3 rounded-xl bg-navy px-4 py-3">
             <span className="text-[13px] font-semibold text-white">
               {selectedIds.length} selected
             </span>
             <span className="text-[12px] font-medium text-white/55">Bulk:</span>
-            <BulkBtn label="Activate" onClick={() => setBulkConfirm('activate')} />
-            <BulkBtn label="Deactivate" onClick={() => setBulkConfirm('deactivate')} />
-            <button
-              type="button"
-              onClick={() => setBulkConfirm('delete')}
-              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
-            >
-              Delete
-            </button>
+            {canEdit ? (
+              <>
+                <BulkBtn label="Activate" onClick={() => setBulkConfirm('activate')} />
+                <BulkBtn label="Deactivate" onClick={() => setBulkConfirm('deactivate')} />
+              </>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => setBulkConfirm('delete')}
+                className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
+              >
+                Delete
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -334,15 +433,28 @@ export function MembersPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {loading && pageItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
+                        Loading members…
+                      </td>
+                    </tr>
+                  ) : null}
                   {pageItems.map((member) => {
                     const selected = selectedIds.includes(member.id)
+                    const membershipLabel =
+                      member.status === 'deleted'
+                        ? 'Deleted'
+                        : member.status.charAt(0).toUpperCase() + member.status.slice(1)
                     return (
                       <tr
                         key={member.id}
                         className={[
                           'border-b border-border last:border-b-0',
                           selected ? 'bg-[#F7F9FC]' : 'bg-white hover:bg-[#FAFAF8]',
-                          member.status === 'inactive' ? 'opacity-70' : '',
+                          member.status === 'inactive' || member.status === 'deleted'
+                            ? 'opacity-70'
+                            : '',
                         ].join(' ')}
                       >
                         <td className="px-4 py-3.5 align-middle">
@@ -381,7 +493,7 @@ export function MembersPage() {
                           <p className="mt-0.5 truncate text-[12px] text-muted">{member.email}</p>
                         </td>
                         <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
-                          {member.status.charAt(0).toUpperCase() + member.status.slice(1)}
+                          {membershipLabel}
                         </td>
                         <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
                           {member.planLabel}
@@ -402,7 +514,7 @@ export function MembersPage() {
                       </tr>
                     )
                   })}
-                  {pageItems.length === 0 ? (
+                  {!loading && pageItems.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
                         No members match your filters.
@@ -416,7 +528,7 @@ export function MembersPage() {
 
           <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {filtered.length}
+              Showing {rangeStart}–{rangeEnd} of {total}
             </p>
             <div className="flex flex-wrap items-center gap-1">
               <PagerButton
@@ -459,7 +571,7 @@ export function MembersPage() {
         }
         confirmLabel="Deactivate"
         onCancel={() => setConfirm(null)}
-        onConfirm={handleConfirm}
+        onConfirm={() => void handleConfirm()}
       />
       <ConfirmDialog
         open={confirm?.type === 'delete'}
@@ -472,32 +584,44 @@ export function MembersPage() {
         confirmLabel="Delete member"
         destructive
         onCancel={() => setConfirm(null)}
-        onConfirm={handleConfirm}
+        onConfirm={() => void handleConfirm()}
+      />
+      <ConfirmDialog
+        open={confirm?.type === 'restore'}
+        title="Restore member?"
+        message={
+          confirm
+            ? `Restore ${confirm.member.fullName} to the member list? They will return as inactive.`
+            : ''
+        }
+        confirmLabel="Restore"
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void handleConfirm()}
       />
       <ConfirmDialog
         open={bulkConfirm === 'activate'}
         title="Bulk activate"
-        message={`Activate ${selectedIds.length} members? Frontend only.`}
+        message={`Activate ${selectedIds.length} members?`}
         confirmLabel="Activate"
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('activate')}
+        onConfirm={() => void runBulk('activate')}
       />
       <ConfirmDialog
         open={bulkConfirm === 'deactivate'}
         title="Bulk deactivate"
-        message={`Deactivate ${selectedIds.length} members? Frontend only.`}
+        message={`Deactivate ${selectedIds.length} members?`}
         confirmLabel="Deactivate"
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('deactivate')}
+        onConfirm={() => void runBulk('deactivate')}
       />
       <ConfirmDialog
         open={bulkConfirm === 'delete'}
         title="Bulk delete"
-        message={`Remove ${selectedIds.length} members from the active list? Frontend only.`}
+        message={`Remove ${selectedIds.length} members from the active list?`}
         confirmLabel="Delete"
         destructive
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('delete')}
+        onConfirm={() => void runBulk('delete')}
       />
     </div>
   )

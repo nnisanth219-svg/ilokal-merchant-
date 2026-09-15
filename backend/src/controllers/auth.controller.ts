@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express'
 import { env } from '../config/env.js'
 import { clearAuthCookie, getAuthCookieOptions } from '../lib/jwt.js'
+import { recordAuditFromRequest } from '../services/auditLog.service.js'
 import { loginWithEmailPassword } from '../services/auth.service.js'
 
 export async function login(
@@ -15,6 +16,17 @@ export async function login(
     }
 
     const result = await loginWithEmailPassword(email, password)
+
+    await recordAuditFromRequest(req, {
+      action: 'LOGIN',
+      module: 'Auth',
+      actorId: result.user.id,
+      actorName: result.user.name,
+      actorEmail: result.user.email,
+      entityId: result.user.id,
+      entityLabel: result.user.name || result.user.email,
+      description: 'Admin logged in',
+    })
 
     res.cookie(env.cookieName, result.token, getAuthCookieOptions())
     res.status(200).json({
@@ -43,11 +55,18 @@ export async function me(
 }
 
 export async function logout(
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
+    await recordAuditFromRequest(req, {
+      action: 'LOGOUT',
+      module: 'Auth',
+      entityId: req.authUser?.id,
+      entityLabel: req.authUser?.name || req.authUser?.email,
+      description: 'Admin logged out',
+    })
     clearAuthCookie(res)
     res.status(200).json({
       success: true,

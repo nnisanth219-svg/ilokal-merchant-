@@ -2,23 +2,52 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { RedemptionStatusBadge } from '../components/redemptions/RedemptionStatusBadge'
 import { formatDateTime } from '../components/cms/AdminListPrimitives'
-import { getRedemptionById, subscribeRedemptions } from '../services/redemptionStore'
+import { getRedemptionApi } from '../services/redemptionApi'
+import type { Redemption } from '../types/redemption'
 
 export function RedemptionDetailPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const [item, setItem] = useState(() => getRedemptionById(id))
+  const [item, setItem] = useState<Redemption | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setItem(getRedemptionById(id))
-    return subscribeRedemptions(() => setItem(getRedemptionById(id)))
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    getRedemptionApi(id)
+      .then((data) => {
+        if (!cancelled) setItem(data)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setItem(null)
+          setError(err instanceof Error ? err.message : 'Unable to load redemption')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [id])
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <p className="text-[13px] text-muted">Loading redemption…</p>
+      </div>
+    )
+  }
 
   if (!item) {
     return (
       <div className="flex h-full items-center justify-center px-6">
         <div className="text-center">
           <h1 className="text-[20px] font-bold text-navy">Redemption not found</h1>
+          {error ? <p className="mt-2 text-[13px] text-action">{error}</p> : null}
           <Link
             to="/redemptions"
             className="mt-3 inline-block text-[13px] font-semibold text-navy underline"

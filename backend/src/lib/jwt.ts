@@ -28,12 +28,10 @@ export function verifyAuthToken(token: string): JwtPayload {
 }
 
 export function getAuthCookieOptions(): CookieOptions {
-  const isProduction = env.nodeEnv === 'production'
-
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: 'lax',
+    secure: env.cookieSecure,
+    sameSite: env.cookieSameSite,
     path: '/',
     maxAge: 24 * 60 * 60 * 1000,
   }
@@ -42,8 +40,8 @@ export function getAuthCookieOptions(): CookieOptions {
 export function clearAuthCookie(res: Response): void {
   res.clearCookie(env.cookieName, {
     httpOnly: true,
-    secure: env.nodeEnv === 'production',
-    sameSite: 'lax',
+    secure: env.cookieSecure,
+    sameSite: env.cookieSameSite,
     path: '/',
     expires: new Date(0),
   })

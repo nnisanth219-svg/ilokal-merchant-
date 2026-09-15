@@ -1,9 +1,13 @@
-import { initialReviews } from '../data/reviews'
 import type { ReviewItem, ReviewStatus } from '../types/review'
+
+/**
+ * Legacy in-memory store — Reviews UI now uses reviewApi / PostgreSQL.
+ * Kept only so older imports do not break; do not wire pages to this.
+ */
 
 type Listener = () => void
 
-let reviews: ReviewItem[] = structuredClone(initialReviews)
+let reviews: ReviewItem[] = []
 const listeners = new Set<Listener>()
 
 function notify(): void {

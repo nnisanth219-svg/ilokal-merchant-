@@ -11,6 +11,9 @@ export interface DashboardStats {
   redemptionsTrend: string | null
   adminUsersTotal: number
   adminUsersActive: number
+  merchantsTotal: number
+  merchantsPending: number
+  merchantsInactive: number
   dataSources: {
     activeMembers: DashboardDataSourceStatus
     liveMerchants: DashboardDataSourceStatus

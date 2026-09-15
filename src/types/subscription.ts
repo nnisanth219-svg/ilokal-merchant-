@@ -24,6 +24,10 @@ export interface Subscription {
   expiryDate: string
   status: SubscriptionStatus
   payments: SubscriptionPayment[]
+  amount?: number
+  currency?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export const SUBSCRIPTION_STATUS_FILTERS: {

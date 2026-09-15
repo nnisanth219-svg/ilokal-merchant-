@@ -25,14 +25,22 @@ export const AUDIT_MODULE_FILTERS: { value: string; label: string }[] = [
   { value: 'Settings', label: 'Settings' },
   { value: 'Subscriptions', label: 'Subscriptions' },
   { value: 'Categories', label: 'Categories' },
+  { value: 'Redemptions', label: 'Redemptions' },
+  { value: 'Reviews', label: 'Reviews' },
 ]
 
 export const AUDIT_ACTION_FILTERS: { value: string; label: string }[] = [
   { value: 'all', label: 'All actions' },
   { value: 'Updated merchant', label: 'Updated merchant' },
+  { value: 'Created merchant', label: 'Created merchant' },
+  { value: 'Deleted merchant', label: 'Deleted merchant' },
+  { value: 'Restored merchant', label: 'Restored merchant' },
   { value: 'Deactivated offer', label: 'Deactivated offer' },
+  { value: 'Updated offer', label: 'Updated offer' },
   { value: 'Invited admin', label: 'Invited admin' },
   { value: 'Changed role', label: 'Changed role' },
+  { value: 'Activated admin', label: 'Activated admin' },
+  { value: 'Deactivated admin', label: 'Deactivated admin' },
   { value: 'Updated settings', label: 'Updated settings' },
   { value: 'Created category', label: 'Created category' },
   { value: 'Suspended member', label: 'Suspended member' },

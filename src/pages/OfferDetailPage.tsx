@@ -1,30 +1,65 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { OfferStatusBadge } from '../components/offers/OfferStatusBadge'
+import { useAuth } from '../context/AuthContext'
 import {
-  deleteOffer,
-  getOfferById,
-  setOfferStatus,
-  subscribeOffers,
-} from '../services/offerStore'
+  getOfferApi,
+  restoreOfferApi,
+  softDeleteOfferApi,
+  updateOfferStatusApi,
+} from '../services/offerApi'
+import { canDeleteInModule, canEditInModule } from '../types/auth'
+import type { Offer } from '../types/offer'
 
 export function OfferDetailPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const [offer, setOffer] = useState(() => getOfferById(id))
+  const { user } = useAuth()
+  const canEdit = canEditInModule(user, 'Offers')
+  const canDelete = canDeleteInModule(user, 'Offers')
+  const [offer, setOffer] = useState<Offer | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  useEffect(() => {
-    setOffer(getOfferById(id))
-    return subscribeOffers(() => setOffer(getOfferById(id)))
+  const loadOffer = useCallback(async () => {
+    if (!id) {
+      setOffer(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await getOfferApi(id, true)
+      setOffer(data)
+    } catch (err) {
+      setOffer(null)
+      setError(err instanceof Error ? err.message : 'Unable to load offer')
+    } finally {
+      setLoading(false)
+    }
   }, [id])
+
+  useEffect(() => {
+    void loadOffer()
+  }, [loadOffer])
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <p className="text-[13px] text-muted">Loading offer…</p>
+      </div>
+    )
+  }
 
   if (!offer) {
     return (
       <div className="flex h-full items-center justify-center px-6">
         <div className="text-center">
           <h1 className="text-[20px] font-bold text-navy">Offer not found</h1>
+          {error ? <p className="mt-2 text-[13px] text-muted">{error}</p> : null}
           <Link to="/offers" className="mt-3 inline-block text-[13px] font-semibold text-navy underline">
             Back to offers
           </Link>
@@ -34,6 +69,7 @@ export function OfferDetailPage() {
   }
 
   const isPaused = offer.status === 'paused'
+  const isDeleted = offer.status === 'deleted'
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -56,28 +92,64 @@ export function OfferDetailPage() {
             <p className="mt-1 break-words text-[13px] text-muted">
               {offer.merchantName} · {offer.category}
             </p>
+            {error ? <p className="mt-1 text-[12px] text-action">{error}</p> : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              to={`/offers/${offer.id}/edit`}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
-            >
-              Edit
-            </Link>
-            <button
-              type="button"
-              onClick={() => setOfferStatus(offer.id, isPaused ? 'live' : 'paused')}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
-            >
-              {isPaused ? 'Activate' : 'Pause'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
-            >
-              Delete
-            </button>
+            {!isDeleted && canEdit ? (
+              <Link
+                to={`/offers/${offer.id}/edit`}
+                className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
+              >
+                Edit
+              </Link>
+            ) : null}
+            {isDeleted && canDelete ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      setError(null)
+                      await restoreOfferApi(offer.id)
+                      await loadOffer()
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Unable to restore offer')
+                    }
+                  })()
+                }}
+                className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
+              >
+                Restore
+              </button>
+            ) : null}
+            {!isDeleted && canEdit ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      setError(null)
+                      await updateOfferStatusApi(offer.id, isPaused ? 'live' : 'paused')
+                      await loadOffer()
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Unable to update offer')
+                    }
+                  })()
+                }}
+                className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
+              >
+                {isPaused ? 'Activate' : 'Pause'}
+              </button>
+            ) : null}
+            {!isDeleted && canDelete ? (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
+              >
+                Delete
+              </button>
+            ) : null}
           </div>
         </div>
       </header>
@@ -130,13 +202,21 @@ export function OfferDetailPage() {
       <ConfirmDialog
         open={confirmDelete}
         title="Delete offer"
-        message={`Delete “${offer.title}”? Frontend only.`}
+        message={`Delete “${offer.title}”?`}
         confirmLabel="Delete"
         destructive
         onCancel={() => setConfirmDelete(false)}
         onConfirm={() => {
-          deleteOffer(offer.id)
-          navigate('/offers')
+          void (async () => {
+            try {
+              setError(null)
+              await softDeleteOfferApi(offer.id)
+              navigate('/offers')
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Unable to delete offer')
+              setConfirmDelete(false)
+            }
+          })()
         }}
       />
     </div>

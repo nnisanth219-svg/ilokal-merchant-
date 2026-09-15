@@ -1,53 +1,94 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import {
-  createCategory,
-  emptyCategoryForm,
-  getCategoryById,
-  updateCategory,
-} from '../services/categoryStore'
-import type { CategoryFormValues, CategoryStatus } from '../types/category'
+import { createCategoryApi, getCategoryApi, updateCategoryApi } from '../services/categoryApi'
+import { emptyCategoryForm } from '../services/categoryStore'
+import type { CategoryFormValues } from '../types/category'
 
 export function CategoryFormPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const isEdit = Boolean(id)
-  const existing = id ? getCategoryById(id) : undefined
 
-  const [values, setValues] = useState<CategoryFormValues>(() => {
-    if (existing) {
-      return {
-        name: existing.name,
-        description: existing.description,
-        status: existing.status,
-        displayOrder: existing.displayOrder,
-      }
-    }
-    return emptyCategoryForm()
-  })
+  const [values, setValues] = useState<CategoryFormValues>(() => emptyCategoryForm())
+  const [loading, setLoading] = useState(isEdit)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notFound, setNotFound] = useState(false)
 
   useEffect(() => {
     if (!id) {
       setValues(emptyCategoryForm())
+      setLoading(false)
+      setNotFound(false)
+      setError(null)
       return
     }
-    const found = getCategoryById(id)
-    if (found) {
-      setValues({
-        name: found.name,
-        description: found.description,
-        status: found.status,
-        displayOrder: found.displayOrder,
+
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    setNotFound(false)
+
+    getCategoryApi(id, true)
+      .then((existing) => {
+        if (cancelled) return
+        setValues({
+          name: existing.name,
+          description: existing.description,
+          status: existing.status === 'deleted' ? 'inactive' : existing.status,
+          displayOrder: existing.displayOrder,
+        })
       })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setNotFound(true)
+        setError(err instanceof Error ? err.message : 'Unable to load category')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
     }
   }, [id])
 
-  if (isEdit && id && !getCategoryById(id)) {
+  async function onSubmit(e: FormEvent): Promise<void> {
+    e.preventDefault()
+    if (!values.name.trim()) {
+      setError('Category name is required.')
+      return
+    }
+    setError(null)
+    setSaving(true)
+    try {
+      if (isEdit && id) {
+        await updateCategoryApi(id, values)
+      } else {
+        await createCategoryApi(values)
+      }
+      navigate('/categories')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to save category')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <p className="text-[13px] text-muted">Loading category…</p>
+      </div>
+    )
+  }
+
+  if (isEdit && notFound) {
     return (
       <div className="flex h-full items-center justify-center px-6">
         <div className="text-center">
           <h1 className="text-[20px] font-bold text-navy">Category not found</h1>
+          {error ? <p className="mt-2 text-[13px] text-muted">{error}</p> : null}
           <Link
             to="/categories"
             className="mt-3 inline-block text-[13px] font-semibold text-navy underline"
@@ -57,21 +98,6 @@ export function CategoryFormPage() {
         </div>
       </div>
     )
-  }
-
-  function onSubmit(e: FormEvent): void {
-    e.preventDefault()
-    if (!values.name.trim()) {
-      setError('Category name is required.')
-      return
-    }
-    setError(null)
-    if (isEdit && id) {
-      updateCategory(id, values)
-    } else {
-      createCategory(values)
-    }
-    navigate('/categories')
   }
 
   return (
@@ -96,7 +122,7 @@ export function CategoryFormPage() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
         <form
-          onSubmit={onSubmit}
+          onSubmit={(e) => void onSubmit(e)}
           className="mx-auto max-w-2xl rounded-xl border border-border bg-white p-5 sm:p-6"
         >
           <div className="space-y-4">
@@ -130,7 +156,10 @@ export function CategoryFormPage() {
                 <select
                   value={values.status}
                   onChange={(e) =>
-                    setValues((v) => ({ ...v, status: e.target.value as CategoryStatus }))
+                    setValues((v) => ({
+                      ...v,
+                      status: e.target.value as CategoryFormValues['status'],
+                    }))
                   }
                   className="mt-1.5 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none focus:border-navy focus:ring-2 focus:ring-navy/10"
                 >
@@ -163,15 +192,23 @@ export function CategoryFormPage() {
             <button
               type="button"
               onClick={() => navigate('/categories')}
-              className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy hover:bg-page"
+              disabled={saving}
+              className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy hover:bg-page disabled:opacity-60"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary"
+              disabled={saving}
+              className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary disabled:opacity-60"
             >
-              {isEdit ? 'Save changes' : 'Save category'}
+              {saving
+                ? isEdit
+                  ? 'Saving…'
+                  : 'Creating…'
+                : isEdit
+                  ? 'Save changes'
+                  : 'Save category'}
             </button>
           </div>
         </form>

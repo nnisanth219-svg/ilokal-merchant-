@@ -33,7 +33,7 @@ interface MerchantWizardProps {
   mode: 'create' | 'edit'
   initialValues: MerchantFormValues
   merchant?: Merchant
-  onSubmit: (values: MerchantFormValues) => void
+  onSubmit: (values: MerchantFormValues) => void | Promise<void>
 }
 
 export function MerchantWizard({
@@ -102,7 +102,7 @@ export function MerchantWizard({
       setStep('business')
       return
     }
-    onSubmit(values)
+    void Promise.resolve(onSubmit(values))
   }
 
   const readiness = useMemo(() => {

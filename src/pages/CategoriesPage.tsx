@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { CategoryStatusBadge } from '../components/categories/CategoryStatusBadge'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
@@ -18,15 +18,21 @@ import {
   ViewportAwareMenu,
   type ViewportMenuItem,
 } from '../components/ui/ViewportAwareMenu'
-import { computeCategorySummary } from '../data/categories'
+import { useAuth } from '../context/AuthContext'
 import {
-  bulkDeleteCategories,
-  bulkSetCategoryStatus,
-  deleteCategory,
-  getCategories,
-  setCategoryStatus,
-  subscribeCategories,
-} from '../services/categoryStore'
+  canCreateInModule,
+  canDeleteInModule,
+  canEditInModule,
+} from '../types/auth'
+import {
+  bulkSoftDeleteCategoriesApi,
+  bulkUpdateCategoryStatusApi,
+  listCategoriesApi,
+  restoreCategoryApi,
+  softDeleteCategoryApi,
+  updateCategoryStatusApi,
+  type CategoryListResponse,
+} from '../services/categoryApi'
 import {
   CATEGORY_STATUS_FILTERS,
   type CategoryItem,
@@ -37,44 +43,78 @@ type StatusFilter = CategoryStatus | 'all'
 
 export function CategoriesPage() {
   const navigate = useNavigate()
-  const [items, setItems] = useState(getCategories)
+  const { user } = useAuth()
+  const canCreate = canCreateInModule(user, 'Categories')
+  const canEdit = canEditInModule(user, 'Categories')
+  const canDelete = canDeleteInModule(user, 'Categories')
+  const canMutate = canEdit || canDelete
+  const [items, setItems] = useState<CategoryItem[]>([])
+  const [summary, setSummary] = useState<CategoryListResponse['summary']>({
+    total: 0,
+    active: 0,
+    withMerchants: 0,
+    empty: 0,
+  })
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: CMS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
   const [confirm, setConfirm] = useState<{
-    type: 'deactivate' | 'delete'
+    type: 'deactivate' | 'delete' | 'restore'
     item: CategoryItem
   } | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState<'activate' | 'deactivate' | 'delete' | null>(
     null,
   )
 
-  useEffect(() => subscribeCategories(() => setItems(getCategories())), [])
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
-  const summary = useMemo(() => computeCategorySummary(items), [items])
+  const loadCategories = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await listCategoriesApi({
+        page,
+        pageSize: CMS_PAGE_SIZE,
+        search: debouncedSearch,
+        status,
+        includeDeleted: status === 'deleted',
+      })
+      setItems(data.categories)
+      setSummary(data.summary)
+      setPagination(data.pagination)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load categories')
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
+  }, [page, debouncedSearch, status])
 
-  const filtered = useMemo(() => {
-    return items.filter((c) => {
-      if (status !== 'all' && c.status !== status) return false
-      if (search.trim()) {
-        const q = search.toLowerCase()
-        if (!`${c.name} ${c.description}`.toLowerCase().includes(q)) return false
-      }
-      return true
-    })
-  }, [items, status, search])
+  useEffect(() => {
+    void loadCategories()
+  }, [loadCategories])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / CMS_PAGE_SIZE))
+  const pageItems = items
+  const totalPages = Math.max(1, pagination.totalPages)
   const currentPage = Math.min(page, totalPages)
-  const pageItems = filtered.slice(
-    (currentPage - 1) * CMS_PAGE_SIZE,
-    currentPage * CMS_PAGE_SIZE,
-  )
-  const rangeStart = filtered.length === 0 ? 0 : (currentPage - 1) * CMS_PAGE_SIZE + 1
-  const rangeEnd = Math.min(currentPage * CMS_PAGE_SIZE, filtered.length)
+  const total = pagination.total
+  const rangeStart = total === 0 ? 0 : (currentPage - 1) * CMS_PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * CMS_PAGE_SIZE, total)
   const allPageSelected =
     pageItems.length > 0 && pageItems.every((c) => selectedIds.includes(c.id))
   const pageNumbers = useMemo(
@@ -86,11 +126,15 @@ export function CategoriesPage() {
 
   const menuItems: ViewportMenuItem[] = activeItem
     ? [
-        {
-          id: 'edit',
-          label: 'Edit',
-          onClick: () => navigate(`/categories/${activeItem.id}/edit`),
-        },
+        ...(canEdit
+          ? [
+              {
+                id: 'edit',
+                label: 'Edit',
+                onClick: () => navigate(`/categories/${activeItem.id}/edit`),
+              },
+            ]
+          : []),
         {
           id: 'merchants',
           label: 'View merchants',
@@ -101,18 +145,39 @@ export function CategoriesPage() {
           label: 'View offers',
           onClick: () => navigate('/offers'),
         },
-        {
-          id: 'deactivate',
-          label: 'Deactivate',
-          onClick: () => setConfirm({ type: 'deactivate', item: activeItem }),
-        },
-        {
-          id: 'delete',
-          label: 'Delete',
-          destructive: true,
-          dividerBefore: true,
-          onClick: () => setConfirm({ type: 'delete', item: activeItem }),
-        },
+        ...(activeItem.status === 'deleted'
+          ? canDelete
+            ? [
+                {
+                  id: 'restore',
+                  label: 'Restore',
+                  onClick: () => setConfirm({ type: 'restore' as const, item: activeItem }),
+                },
+              ]
+            : []
+          : [
+              ...(canEdit
+                ? [
+                    {
+                      id: 'deactivate',
+                      label: 'Deactivate',
+                      onClick: () =>
+                        setConfirm({ type: 'deactivate' as const, item: activeItem }),
+                    },
+                  ]
+                : []),
+              ...(canDelete
+                ? [
+                    {
+                      id: 'delete',
+                      label: 'Delete',
+                      destructive: true,
+                      dividerBefore: true,
+                      onClick: () => setConfirm({ type: 'delete' as const, item: activeItem }),
+                    },
+                  ]
+                : []),
+            ]),
       ]
     : []
 
@@ -147,20 +212,38 @@ export function CategoriesPage() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
-  function handleConfirm(): void {
+  async function handleConfirm(): Promise<void> {
     if (!confirm) return
-    if (confirm.type === 'deactivate') setCategoryStatus(confirm.item.id, 'inactive')
-    if (confirm.type === 'delete') deleteCategory(confirm.item.id)
-    setConfirm(null)
-    closeMenu()
+    try {
+      setError(null)
+      if (confirm.type === 'deactivate') {
+        await updateCategoryStatusApi(confirm.item.id, 'inactive')
+      }
+      if (confirm.type === 'delete') await softDeleteCategoryApi(confirm.item.id)
+      if (confirm.type === 'restore') await restoreCategoryApi(confirm.item.id)
+      setConfirm(null)
+      closeMenu()
+      await loadCategories()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update category')
+      setConfirm(null)
+      closeMenu()
+    }
   }
 
-  function runBulk(action: 'activate' | 'deactivate' | 'delete'): void {
-    if (action === 'activate') bulkSetCategoryStatus(selectedIds, 'active')
-    if (action === 'deactivate') bulkSetCategoryStatus(selectedIds, 'inactive')
-    if (action === 'delete') bulkDeleteCategories(selectedIds)
-    setSelectedIds([])
-    setBulkConfirm(null)
+  async function runBulk(action: 'activate' | 'deactivate' | 'delete'): Promise<void> {
+    try {
+      setError(null)
+      if (action === 'activate') await bulkUpdateCategoryStatusApi(selectedIds, 'active')
+      if (action === 'deactivate') await bulkUpdateCategoryStatusApi(selectedIds, 'inactive')
+      if (action === 'delete') await bulkSoftDeleteCategoriesApi(selectedIds)
+      setSelectedIds([])
+      setBulkConfirm(null)
+      await loadCategories()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update categories')
+      setBulkConfirm(null)
+    }
   }
 
   return (
@@ -172,13 +255,16 @@ export function CategoriesPage() {
             <p className="mt-0.5 text-[12px] text-muted">
               Manage merchant categories used across the iLokal platform.
             </p>
+            {error ? <p className="mt-1 text-[12px] text-action">{error}</p> : null}
           </div>
-          <Link
-            to="/categories/create"
-            className="inline-flex h-[38px] min-h-[38px] w-full items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white transition hover:bg-navy-secondary sm:w-auto"
-          >
-            + Add category
-          </Link>
+          {canCreate ? (
+            <Link
+              to="/categories/create"
+              className="inline-flex h-[38px] min-h-[38px] w-full items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white transition hover:bg-navy-secondary sm:w-auto"
+            >
+              + Add category
+            </Link>
+          ) : null}
         </div>
       </header>
 
@@ -227,21 +313,27 @@ export function CategoriesPage() {
           </div>
         </div>
 
-        {selectedIds.length > 0 ? (
+        {selectedIds.length > 0 && canMutate ? (
           <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3 rounded-xl bg-navy px-4 py-3">
             <span className="text-[13px] font-semibold text-white">
               {selectedIds.length} selected
             </span>
             <span className="text-[12px] font-medium text-white/55">Bulk:</span>
-            <BulkBtn label="Activate" onClick={() => setBulkConfirm('activate')} />
-            <BulkBtn label="Deactivate" onClick={() => setBulkConfirm('deactivate')} />
-            <button
-              type="button"
-              onClick={() => setBulkConfirm('delete')}
-              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
-            >
-              Delete
-            </button>
+            {canEdit ? (
+              <>
+                <BulkBtn label="Activate" onClick={() => setBulkConfirm('activate')} />
+                <BulkBtn label="Deactivate" onClick={() => setBulkConfirm('deactivate')} />
+              </>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => setBulkConfirm('delete')}
+                className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
+              >
+                Delete
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -270,6 +362,13 @@ export function CategoriesPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {loading && pageItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-14 text-center text-[13px] text-muted">
+                        Loading categories…
+                      </td>
+                    </tr>
+                  ) : null}
                   {pageItems.map((row) => {
                     const selected = selectedIds.includes(row.id)
                     return (
@@ -278,7 +377,9 @@ export function CategoriesPage() {
                         className={[
                           'border-b border-border last:border-b-0',
                           selected ? 'bg-[#F7F9FC]' : 'bg-white hover:bg-[#FAFAF8]',
-                          row.status === 'inactive' ? 'opacity-70' : '',
+                          row.status === 'inactive' || row.status === 'deleted'
+                            ? 'opacity-70'
+                            : '',
                         ].join(' ')}
                       >
                         <td className="px-4 py-3.5 align-middle">
@@ -291,13 +392,17 @@ export function CategoriesPage() {
                           />
                         </td>
                         <td className="px-4 py-3.5 align-middle">
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/categories/${row.id}/edit`)}
-                            className="text-left text-[13px] font-semibold text-navy hover:underline"
-                          >
-                            {row.name}
-                          </button>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/categories/${row.id}/edit`)}
+                              className="text-left text-[13px] font-semibold text-navy hover:underline"
+                            >
+                              {row.name}
+                            </button>
+                          ) : (
+                            <span className="text-[13px] font-semibold text-navy">{row.name}</span>
+                          )}
                         </td>
                         <td className="max-w-[280px] px-4 py-3.5 align-middle text-[13px] text-muted">
                           <span className="line-clamp-2">{row.description}</span>
@@ -324,7 +429,7 @@ export function CategoriesPage() {
                       </tr>
                     )
                   })}
-                  {pageItems.length === 0 ? (
+                  {!loading && pageItems.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-4 py-14 text-center text-[13px] text-muted">
                         No categories match your filters.
@@ -338,7 +443,7 @@ export function CategoriesPage() {
 
           <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {filtered.length}
+              Showing {rangeStart}–{rangeEnd} of {total}
             </p>
             <div className="flex flex-wrap items-center gap-1">
               <PagerButton
@@ -381,45 +486,57 @@ export function CategoriesPage() {
         }
         confirmLabel="Deactivate"
         onCancel={() => setConfirm(null)}
-        onConfirm={handleConfirm}
+        onConfirm={() => void handleConfirm()}
       />
       <ConfirmDialog
         open={confirm?.type === 'delete'}
         title="Delete category?"
         message={
           confirm
-            ? `Permanently delete “${confirm.item.name}”? This cannot be undone.`
+            ? `Soft delete “${confirm.item.name}”? It can be restored later.`
             : ''
         }
         confirmLabel="Delete category"
         destructive
         onCancel={() => setConfirm(null)}
-        onConfirm={handleConfirm}
+        onConfirm={() => void handleConfirm()}
+      />
+      <ConfirmDialog
+        open={confirm?.type === 'restore'}
+        title="Restore category?"
+        message={
+          confirm
+            ? `Restore “${confirm.item.name}”? It will return as inactive.`
+            : ''
+        }
+        confirmLabel="Restore"
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void handleConfirm()}
       />
       <ConfirmDialog
         open={bulkConfirm === 'activate'}
         title="Bulk activate"
-        message={`Activate ${selectedIds.length} categories? Frontend only.`}
+        message={`Activate ${selectedIds.length} categories?`}
         confirmLabel="Activate"
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('activate')}
+        onConfirm={() => void runBulk('activate')}
       />
       <ConfirmDialog
         open={bulkConfirm === 'deactivate'}
         title="Bulk deactivate"
-        message={`Deactivate ${selectedIds.length} categories? Frontend only.`}
+        message={`Deactivate ${selectedIds.length} categories?`}
         confirmLabel="Deactivate"
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('deactivate')}
+        onConfirm={() => void runBulk('deactivate')}
       />
       <ConfirmDialog
         open={bulkConfirm === 'delete'}
         title="Bulk delete"
-        message={`Delete ${selectedIds.length} categories? Frontend only.`}
+        message={`Soft delete ${selectedIds.length} categories? They can be restored later.`}
         confirmLabel="Delete"
         destructive
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('delete')}
+        onConfirm={() => void runBulk('delete')}
       />
     </div>
   )

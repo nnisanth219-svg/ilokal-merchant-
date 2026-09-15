@@ -12,6 +12,10 @@ export interface DashboardStats {
   /** Real counts from existing `users` table */
   adminUsersTotal: number
   adminUsersActive: number
+  /** Real counts from existing `merchants` table (non-deleted unless noted) */
+  merchantsTotal: number
+  merchantsPending: number
+  merchantsInactive: number
   dataSources: {
     activeMembers: DashboardDataSourceStatus
     liveMerchants: DashboardDataSourceStatus

@@ -5,6 +5,7 @@ const STATUS_STYLES: Record<MemberStatus, string> = {
   expired: 'bg-[#F0EEEA] text-muted',
   suspended: 'bg-[#FFF4D6] text-[#A67A00]',
   inactive: 'bg-[#EDEDED] text-[#9A9A9A]',
+  deleted: 'bg-[#FCE8E8] text-action',
 }
 
 const STATUS_LABELS: Record<MemberStatus, string> = {
@@ -12,6 +13,7 @@ const STATUS_LABELS: Record<MemberStatus, string> = {
   expired: 'Expired',
   suspended: 'Suspended',
   inactive: 'Inactive',
+  deleted: 'Deleted',
 }
 
 interface MemberStatusBadgeProps {

@@ -1,9 +1,13 @@
-import { initialAuditLogs } from '../data/auditLogs'
 import type { AuditLogEntry } from '../types/auditLog'
+
+/**
+ * Legacy in-memory store — Audit Log UI now uses auditLogApi / PostgreSQL.
+ * Kept only so older imports do not break; do not wire pages to this.
+ */
 
 type Listener = () => void
 
-let entries: AuditLogEntry[] = structuredClone(initialAuditLogs)
+let entries: AuditLogEntry[] = []
 const listeners = new Set<Listener>()
 
 export function subscribeAuditLogs(listener: Listener): () => void {

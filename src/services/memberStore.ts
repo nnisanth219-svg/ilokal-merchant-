@@ -1,16 +1,20 @@
-import { initialMembers } from '../data/members'
 import type { Member, MemberStatus } from '../types/member'
+
+/**
+ * Legacy in-memory store — Members UI now uses memberApi / PostgreSQL.
+ * Kept only so older imports do not break; do not wire pages to this.
+ */
 
 type Listener = () => void
 
-let members: Member[] = structuredClone(initialMembers)
+let members: Member[] = []
 const listeners = new Set<Listener>()
 
 function notify(): void {
   listeners.forEach((listener) => listener())
 }
 
-function withStatus(member: Member, status: MemberStatus): Member {
+function withStatus(member: Member, status: Exclude<MemberStatus, 'deleted'>): Member {
   return {
     ...member,
     status,
@@ -38,7 +42,7 @@ export function getMemberById(id: string): Member | undefined {
   return members.find((m) => m.id === id)
 }
 
-export function setMemberStatus(id: string, status: MemberStatus): void {
+export function setMemberStatus(id: string, status: Exclude<MemberStatus, 'deleted'>): void {
   members = members.map((m) => (m.id === id ? withStatus(m, status) : m))
   notify()
 }
@@ -47,7 +51,10 @@ export function softDeleteMember(id: string): void {
   setMemberStatus(id, 'inactive')
 }
 
-export function bulkSetMemberStatus(ids: string[], status: MemberStatus): void {
+export function bulkSetMemberStatus(
+  ids: string[],
+  status: Exclude<MemberStatus, 'deleted'>,
+): void {
   const idSet = new Set(ids)
   members = members.map((m) => (idSet.has(m.id) ? withStatus(m, status) : m))
   notify()

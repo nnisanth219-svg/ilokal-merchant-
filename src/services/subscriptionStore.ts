@@ -1,9 +1,12 @@
-import { initialSubscriptions } from '../data/subscriptions'
 import type { Subscription, SubscriptionStatus } from '../types/subscription'
+
+/**
+ * Legacy in-memory store — Subscriptions UI now uses subscriptionApi / PostgreSQL.
+ */
 
 type Listener = () => void
 
-let subscriptions: Subscription[] = structuredClone(initialSubscriptions)
+let subscriptions: Subscription[] = []
 const listeners = new Set<Listener>()
 
 function notify(): void {

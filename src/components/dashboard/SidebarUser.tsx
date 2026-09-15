@@ -19,8 +19,8 @@ export function SidebarUser() {
   const navigate = useNavigate()
   const [loggingOut, setLoggingOut] = useState(false)
 
-  const displayName = user?.name ?? 'David R.'
-  const roleLabel = formatRole(user?.role ?? 'SUPER_ADMIN')
+  const displayName = user?.name ?? 'Admin'
+  const roleLabel = user?.roleLabel ?? formatRole(user?.role ?? '')
 
   const handleLogout = async () => {
     setLoggingOut(true)

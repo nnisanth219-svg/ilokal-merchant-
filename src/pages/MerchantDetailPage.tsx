@@ -1,13 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { MerchantStatusBadge } from '../components/merchants/MerchantStatusBadge'
+import { useAuth } from '../context/AuthContext'
 import {
-  getMerchantById,
-  setMerchantStatus,
-  softDeleteMerchant,
-  subscribeMerchants,
-} from '../services/merchantStore'
+  getMerchantApi,
+  restoreMerchantApi,
+  softDeleteMerchantApi,
+  updateMerchantStatusApi,
+} from '../services/merchantApi'
+import {
+  canCreateInModule,
+  canDeleteInModule,
+  canEditInModule,
+} from '../types/auth'
 import type { Merchant } from '../types/merchant'
 
 type DetailTab =
@@ -21,20 +27,53 @@ type DetailTab =
 export function MerchantDetailPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const [merchant, setMerchant] = useState(() => getMerchantById(id))
+  const { user } = useAuth()
+  const canEdit = canEditInModule(user, 'Merchants')
+  const canDelete = canDeleteInModule(user, 'Merchants')
+  const canCreateOffer = canCreateInModule(user, 'Offers')
+  const [merchant, setMerchant] = useState<Merchant | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<DetailTab>('overview')
   const [confirm, setConfirm] = useState<'deactivate' | 'delete' | null>(null)
 
-  useEffect(() => {
-    setMerchant(getMerchantById(id))
-    return subscribeMerchants(() => setMerchant(getMerchantById(id)))
+  const loadMerchant = useCallback(async () => {
+    if (!id) {
+      setMerchant(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await getMerchantApi(id, true)
+      setMerchant(data)
+    } catch (err) {
+      setMerchant(null)
+      setError(err instanceof Error ? err.message : 'Unable to load merchant')
+    } finally {
+      setLoading(false)
+    }
   }, [id])
+
+  useEffect(() => {
+    void loadMerchant()
+  }, [loadMerchant])
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <p className="text-[13px] text-muted">Loading merchant…</p>
+      </div>
+    )
+  }
 
   if (!merchant) {
     return (
       <div className="flex h-full items-center justify-center px-6">
         <div className="text-center">
           <h1 className="text-[20px] font-bold text-navy">Merchant not found</h1>
+          {error ? <p className="mt-2 text-[13px] text-muted">{error}</p> : null}
           <Link to="/merchants" className="mt-3 inline-block text-[13px] font-semibold text-navy underline">
             Back to merchants
           </Link>
@@ -42,6 +81,8 @@ export function MerchantDetailPage() {
       </div>
     )
   }
+
+  const isDeleted = merchant.status === 'deleted'
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -91,26 +132,50 @@ export function MerchantDetailPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              to={`/merchants/${merchant.id}/edit`}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
-            >
-              Edit
-            </Link>
-            <button
-              type="button"
-              onClick={() => setConfirm('deactivate')}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
-            >
-              Deactivate
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirm('delete')}
-              className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
-            >
-              Delete
-            </button>
+            {canEdit && !isDeleted ? (
+              <Link
+                to={`/merchants/${merchant.id}/edit`}
+                className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+              >
+                Edit
+              </Link>
+            ) : null}
+            {isDeleted && canDelete ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      await restoreMerchantApi(merchant.id)
+                      await loadMerchant()
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Unable to restore merchant')
+                    }
+                  })()
+                }}
+                className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+              >
+                Restore
+              </button>
+            ) : null}
+            {!isDeleted && canEdit ? (
+              <button
+                type="button"
+                onClick={() => setConfirm('deactivate')}
+                className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+              >
+                Deactivate
+              </button>
+            ) : null}
+            {!isDeleted && canDelete ? (
+              <button
+                type="button"
+                onClick={() => setConfirm('delete')}
+                className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
+              >
+                Delete
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -145,11 +210,14 @@ export function MerchantDetailPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
-        {tab === 'overview' ? <OverviewTab merchant={merchant} /> : null}
+        {error ? <p className="mb-3 text-[12px] text-action">{error}</p> : null}
+        {tab === 'overview' ? (
+          <OverviewTab merchant={merchant} canCreateOffer={canCreateOffer} />
+        ) : null}
         {tab === 'offers' ? (
           <PlaceholderTab
             title="Offers"
-            body="Offer management UI placeholder."
+            body={`${merchant.offersCount} offer${merchant.offersCount === 1 ? '' : 's'} linked to this merchant.`}
             actionLabel="Manage offers"
             onAction={() => navigate(`/merchants/${merchant.id}/offers`)}
           />
@@ -157,19 +225,25 @@ export function MerchantDetailPage() {
         {tab === 'redemptions' ? (
           <PlaceholderTab
             title="Redemptions"
-            body={`${merchant.redeemedCount.toLocaleString()} redemptions in mock data.`}
+            body={`${merchant.redeemedCount.toLocaleString()} successful redemption${merchant.redeemedCount === 1 ? '' : 's'} recorded for this merchant.`}
+            actionLabel="View redemptions"
+            onAction={() => navigate('/redemptions')}
           />
         ) : null}
         {tab === 'reviews' ? (
           <PlaceholderTab
             title="Reviews"
-            body={`${merchant.ratingsCount} reviews · average ${merchant.rating.toFixed(1)}.`}
+            body={`${merchant.ratingsCount} review${merchant.ratingsCount === 1 ? '' : 's'} · average ${merchant.rating.toFixed(1)}.`}
+            actionLabel="View reviews"
+            onAction={() => navigate('/reviews')}
           />
         ) : null}
         {tab === 'members' ? (
           <PlaceholderTab
             title="Members reached"
-            body={`${merchant.membersReached.toLocaleString()} members reached in mock data.`}
+            body={`${merchant.membersReached.toLocaleString()} member${merchant.membersReached === 1 ? '' : 's'} reached through this merchant.`}
+            actionLabel="View members"
+            onAction={() => navigate('/members')}
           />
         ) : null}
         {tab === 'activity' ? <ActivityList merchant={merchant} /> : null}
@@ -178,25 +252,40 @@ export function MerchantDetailPage() {
       <ConfirmDialog
         open={confirm === 'deactivate'}
         title="Deactivate merchant"
-        message={`Deactivate “${merchant.businessName}”? Frontend only.`}
+        message={`Deactivate “${merchant.businessName}”?`}
         confirmLabel="Deactivate"
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          setMerchantStatus(merchant.id, 'inactive')
-          setConfirm(null)
+          void (async () => {
+            try {
+              await updateMerchantStatusApi(merchant.id, 'inactive')
+              setConfirm(null)
+              await loadMerchant()
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Unable to deactivate merchant')
+              setConfirm(null)
+            }
+          })()
         }}
       />
       <ConfirmDialog
         open={confirm === 'delete'}
         title="Delete merchant"
-        message={`Soft delete “${merchant.businessName}”? Frontend only.`}
+        message={`Soft delete “${merchant.businessName}”?`}
         confirmLabel="Delete"
         destructive
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          softDeleteMerchant(merchant.id)
-          setConfirm(null)
-          navigate('/merchants')
+          void (async () => {
+            try {
+              await softDeleteMerchantApi(merchant.id)
+              setConfirm(null)
+              navigate('/merchants')
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Unable to delete merchant')
+              setConfirm(null)
+            }
+          })()
         }}
       />
     </div>
@@ -228,7 +317,13 @@ function TabButton({
   )
 }
 
-function OverviewTab({ merchant }: { merchant: Merchant }) {
+function OverviewTab({
+  merchant,
+  canCreateOffer,
+}: {
+  merchant: Merchant
+  canCreateOffer: boolean
+}) {
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_300px]">
       <div className="space-y-4">
@@ -242,12 +337,14 @@ function OverviewTab({ merchant }: { merchant: Merchant }) {
         <section className="rounded-xl border border-border bg-white p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-[15px] font-bold text-navy">Live offers</h2>
-            <Link
-              to={`/merchants/${merchant.id}/offers`}
-              className="inline-flex h-8 items-center rounded-lg bg-navy px-3 text-[12px] font-semibold text-white hover:bg-navy-secondary"
-            >
-              + Add offer
-            </Link>
+            {canCreateOffer ? (
+              <Link
+                to={`/merchants/${merchant.id}/offers`}
+                className="inline-flex h-8 items-center rounded-lg bg-navy px-3 text-[12px] font-semibold text-white hover:bg-navy-secondary"
+              >
+                + Add offer
+              </Link>
+            ) : null}
           </div>
           <div className="space-y-3">
             {merchant.offers.length === 0 ? (

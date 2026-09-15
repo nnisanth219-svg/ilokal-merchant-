@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { ProtectedRoute } from './components/auth/ProtectedRoute'
+import { PermissionRoute, ProtectedRoute } from './components/auth/ProtectedRoute'
 import { DashboardLayout } from './components/dashboard/DashboardLayout'
 import { AuthProvider } from './context/AuthContext'
 import { AdminUserDetailPage } from './pages/AdminUserDetailPage'
@@ -39,6 +39,7 @@ export default function App() {
 
           <Route element={<ProtectedRoute />}>
             <Route element={<DashboardLayout />}>
+              <Route element={<PermissionRoute />}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/merchants" element={<MerchantsPage />} />
               <Route path="/merchants/create" element={<CreateMerchantPage />} />
@@ -65,6 +66,7 @@ export default function App() {
               <Route path="/admin-users/:id" element={<AdminUserDetailPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/audit-log" element={<AuditLogPage />} />
+              </Route>
             </Route>
           </Route>
 

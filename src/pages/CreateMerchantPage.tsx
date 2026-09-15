@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { MerchantWizard } from '../components/merchants/MerchantWizard'
-import { createMerchant, emptyMerchantForm } from '../services/merchantStore'
+import { createMerchantApi } from '../services/merchantApi'
+import { emptyMerchantForm } from '../services/merchantStore'
 
 export function CreateMerchantPage() {
   const navigate = useNavigate()
@@ -9,8 +10,8 @@ export function CreateMerchantPage() {
     <MerchantWizard
       mode="create"
       initialValues={emptyMerchantForm()}
-      onSubmit={(values) => {
-        const created = createMerchant(values)
+      onSubmit={async (values) => {
+        const created = await createMerchantApi(values)
         navigate(`/merchants/${created.id}`)
       }}
     />

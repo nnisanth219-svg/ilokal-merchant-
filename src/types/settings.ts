@@ -29,3 +29,5 @@ export interface AppSettingsState {
   security: SecuritySettings
   notifications: NotificationSettings
 }
+
+export type SettingKey = keyof AppSettingsState

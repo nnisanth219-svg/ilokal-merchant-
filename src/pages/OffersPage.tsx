@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { OfferStatusBadge } from '../components/offers/OfferStatusBadge'
@@ -7,21 +7,29 @@ import {
   ViewportAwareMenu,
   type ViewportMenuItem,
 } from '../components/ui/ViewportAwareMenu'
+import { useAuth } from '../context/AuthContext'
 import {
   OFFER_CATEGORIES,
   OFFER_STATUS_FILTERS,
   OFFER_TYPE_FILTERS,
-  offerSummaryStats,
 } from '../data/offers'
 import {
-  bulkDeleteOffers,
-  bulkSetOfferStatus,
-  deleteOffer,
-  duplicateOffer,
-  getOffers,
-  setOfferStatus,
-  subscribeOffers,
-} from '../services/offerStore'
+  bulkSoftDeleteOffersApi,
+  bulkUpdateOfferStatusApi,
+  duplicateOfferApi,
+  listOfferMerchantsApi,
+  listOffersApi,
+  restoreOfferApi,
+  softDeleteOfferApi,
+  updateOfferStatusApi,
+  type OfferListResponse,
+  type OfferMerchantOption,
+} from '../services/offerApi'
+import {
+  canCreateInModule,
+  canDeleteInModule,
+  canEditInModule,
+} from '../types/auth'
 import type { Offer, OfferStatus, OfferType } from '../types/offer'
 
 const PAGE_SIZE = 25
@@ -47,55 +55,124 @@ function ChevronDown() {
   )
 }
 
+function escapeCsv(value: string): string {
+  if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`
+  return value
+}
+
+function downloadOffersCsv(offers: Offer[]): void {
+  const lines = [
+    ['title', 'code', 'merchant', 'status', 'redeemedCount'].join(','),
+    ...offers.map((o) =>
+      [o.title, o.offerCode, o.merchantName, o.status, String(o.redeemedCount)]
+        .map(escapeCsv)
+        .join(','),
+    ),
+  ]
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'offers.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export function OffersPage() {
   const navigate = useNavigate()
-  const [offers, setOffers] = useState(getOffers)
+  const { user } = useAuth()
+  const canEdit = canEditInModule(user, 'Offers')
+  const canDelete = canDeleteInModule(user, 'Offers')
+  const canCreate = canCreateInModule(user, 'Offers')
+  const canMutate = canEdit || canDelete
+  const [offers, setOffers] = useState<Offer[]>([])
+  const [summary, setSummary] = useState<OfferListResponse['summary']>({
+    total: 0,
+    live: 0,
+    scheduled: 0,
+    expired: 0,
+    usageTotal: 0,
+  })
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [merchants, setMerchants] = useState<OfferMerchantOption[]>([])
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [merchant, setMerchant] = useState('all')
   const [category, setCategory] = useState('all')
   const [offerType, setOfferType] = useState<TypeFilter>('all')
   const [dateFilter, setDateFilter] = useState<DateFilter>('any')
+  const [includeDeleted, setIncludeDeleted] = useState(false)
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Offer | null>(null)
+  const [confirmRestore, setConfirmRestore] = useState<Offer | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState<'activate' | 'pause' | 'delete' | null>(null)
 
-  useEffect(() => subscribeOffers(() => setOffers(getOffers())), [])
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
-  const merchants = useMemo(() => {
-    const map = new Map<string, string>()
-    offers.forEach((o) => map.set(o.merchantId, o.merchantName))
-    return [...map.entries()].map(([id, name]) => ({ id, name }))
-  }, [offers])
+  useEffect(() => {
+    let cancelled = false
+    listOfferMerchantsApi()
+      .then((data) => {
+        if (!cancelled) setMerchants(data)
+      })
+      .catch(() => {
+        if (!cancelled) setMerchants([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
-  const filtered = useMemo(() => {
-    return offers.filter((o) => {
-      if (status !== 'all' && o.status !== status) return false
-      if (merchant !== 'all' && o.merchantId !== merchant) return false
-      if (category !== 'all' && o.category !== category) return false
-      if (offerType !== 'all' && o.offerType !== offerType) return false
-      if (dateFilter !== 'any') {
-        const created = new Date(o.createdAt).getTime()
-        const days = dateFilter === '30d' ? 30 : dateFilter === '90d' ? 90 : 365
-        if (Date.now() - created > days * 24 * 60 * 60 * 1000) return false
-      }
-      if (search.trim()) {
-        const q = search.toLowerCase()
-        const hay = `${o.title} ${o.merchantName} ${o.offerCode}`.toLowerCase()
-        if (!hay.includes(q)) return false
-      }
-      return true
-    })
-  }, [offers, status, merchant, category, offerType, dateFilter, search])
+  const loadOffers = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await listOffersApi({
+        page,
+        pageSize: PAGE_SIZE,
+        search: debouncedSearch,
+        status,
+        merchantId: merchant,
+        category,
+        offerType,
+        date: dateFilter,
+        includeDeleted: includeDeleted || status === 'deleted',
+      })
+      setOffers(data.offers)
+      setSummary(data.summary)
+      setPagination(data.pagination)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load offers')
+      setOffers([])
+    } finally {
+      setLoading(false)
+    }
+  }, [page, debouncedSearch, status, merchant, category, offerType, dateFilter, includeDeleted])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  useEffect(() => {
+    void loadOffers()
+  }, [loadOffers])
+
+  const pageItems = offers
+  const totalPages = Math.max(1, pagination.totalPages)
   const currentPage = Math.min(page, totalPages)
-  const pageItems = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
-  const rangeStart = filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
-  const rangeEnd = Math.min(currentPage * PAGE_SIZE, filtered.length)
+  const total = pagination.total
+  const rangeStart = total === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, total)
   const allPageSelected =
     pageItems.length > 0 && pageItems.every((o) => selectedIds.includes(o.id))
 
@@ -110,42 +187,91 @@ export function OffersPage() {
 
   const activeOffer = pageItems.find((o) => o.id === openMenuId) ?? null
   const menuItems: ViewportMenuItem[] = activeOffer
-    ? [
-        {
-          id: 'view',
-          label: 'View offer',
-          onClick: () => navigate(`/offers/${activeOffer.id}`),
-        },
-        {
-          id: 'edit',
-          label: 'Edit offer',
-          onClick: () => navigate(`/offers/${activeOffer.id}/edit`),
-        },
-        {
-          id: 'pause',
-          label: activeOffer.status === 'paused' ? 'Activate offer' : 'Pause offer',
-          onClick: () =>
-            setOfferStatus(
-              activeOffer.id,
-              activeOffer.status === 'paused' ? 'live' : 'paused',
-            ),
-        },
-        {
-          id: 'duplicate',
-          label: 'Duplicate offer',
-          onClick: () => {
-            const copy = duplicateOffer(activeOffer.id)
-            if (copy) navigate(`/offers/${copy.id}/edit`)
+    ? activeOffer.status === 'deleted'
+      ? [
+          {
+            id: 'view',
+            label: 'View offer',
+            onClick: () => navigate(`/offers/${activeOffer.id}`),
           },
-        },
-        {
-          id: 'delete',
-          label: 'Delete offer',
-          destructive: true,
-          dividerBefore: true,
-          onClick: () => setConfirmDelete(activeOffer),
-        },
-      ]
+          ...(canDelete
+            ? [
+                {
+                  id: 'restore',
+                  label: 'Restore offer',
+                  onClick: () => setConfirmRestore(activeOffer),
+                },
+              ]
+            : []),
+        ]
+      : [
+          {
+            id: 'view',
+            label: 'View offer',
+            onClick: () => navigate(`/offers/${activeOffer.id}`),
+          },
+          ...(canEdit
+            ? [
+                {
+                  id: 'edit',
+                  label: 'Edit offer',
+                  onClick: () => navigate(`/offers/${activeOffer.id}/edit`),
+                },
+                {
+                  id: 'pause',
+                  label: activeOffer.status === 'paused' ? 'Activate offer' : 'Pause offer',
+                  onClick: () => {
+                    void (async () => {
+                      try {
+                        setError(null)
+                        await updateOfferStatusApi(
+                          activeOffer.id,
+                          activeOffer.status === 'paused' ? 'live' : 'paused',
+                        )
+                        closeMenu()
+                        await loadOffers()
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Unable to update offer')
+                        closeMenu()
+                      }
+                    })()
+                  },
+                },
+              ]
+            : []),
+          ...(canCreate
+            ? [
+                {
+                  id: 'duplicate',
+                  label: 'Duplicate offer',
+                  onClick: () => {
+                    void (async () => {
+                      try {
+                        setError(null)
+                        const copy = await duplicateOfferApi(activeOffer.id)
+                        closeMenu()
+                        navigate(`/offers/${copy.id}/edit`)
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Unable to duplicate offer')
+                        closeMenu()
+                      }
+                    })()
+                  },
+                },
+              ]
+            : []),
+          ...(canDelete
+            ? [
+                {
+                  id: 'delete',
+                  label: 'Delete offer',
+                  destructive: true,
+                  dividerBefore: true,
+                  onClick: () => setConfirmDelete(activeOffer),
+                },
+              ]
+            : []),
+        ]
     : []
 
   function closeMenu(): void {
@@ -175,12 +301,19 @@ export function OffersPage() {
     })
   }
 
-  function runBulk(action: 'activate' | 'pause' | 'delete'): void {
-    if (action === 'activate') bulkSetOfferStatus(selectedIds, 'live')
-    if (action === 'pause') bulkSetOfferStatus(selectedIds, 'paused')
-    if (action === 'delete') bulkDeleteOffers(selectedIds)
-    setSelectedIds([])
-    setBulkConfirm(null)
+  async function runBulk(action: 'activate' | 'pause' | 'delete'): Promise<void> {
+    try {
+      setError(null)
+      if (action === 'activate') await bulkUpdateOfferStatusApi(selectedIds, 'live')
+      if (action === 'pause') await bulkUpdateOfferStatusApi(selectedIds, 'paused')
+      if (action === 'delete') await bulkSoftDeleteOffersApi(selectedIds)
+      setSelectedIds([])
+      setBulkConfirm(null)
+      await loadOffers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update offers')
+      setBulkConfirm(null)
+    }
   }
 
   return (
@@ -192,22 +325,26 @@ export function OffersPage() {
             <p className="mt-0.5 text-[12px] text-muted">
               Manage merchant offers available to iLokal members.
             </p>
+            {loading ? <p className="mt-1 text-[12px] text-muted">Loading…</p> : null}
+            {error ? <p className="mt-1 text-[12px] text-action">{error}</p> : null}
           </div>
-          <Link
-            to="/offers/create"
-            className="inline-flex h-[38px] min-h-[38px] w-full items-center justify-center rounded-lg bg-action px-4 text-[13px] font-semibold text-white transition hover:bg-[#c82027] sm:w-auto"
-          >
-            + New offer
-          </Link>
+          {canCreate ? (
+            <Link
+              to="/offers/create"
+              className="inline-flex h-[38px] min-h-[38px] w-full items-center justify-center rounded-lg bg-action px-4 text-[13px] font-semibold text-white transition hover:bg-[#c82027] sm:w-auto"
+            >
+              + New offer
+            </Link>
+          ) : null}
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryCard label="Total offers" value={String(offerSummaryStats.total)} />
-          <SummaryCard label="Live" value={String(offerSummaryStats.live)} />
-          <SummaryCard label="Scheduled" value={String(offerSummaryStats.scheduled)} />
-          <SummaryCard label="Expired" value={String(offerSummaryStats.expired)} />
+          <SummaryCard label="Total offers" value={String(summary.total)} />
+          <SummaryCard label="Live" value={String(summary.live)} />
+          <SummaryCard label="Scheduled" value={String(summary.scheduled)} />
+          <SummaryCard label="Expired" value={String(summary.expired)} />
         </div>
 
         <div className="mb-4 flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -307,6 +444,7 @@ export function OffersPage() {
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() => downloadOffersCsv(pageItems)}
               className="inline-flex h-[38px] items-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page"
             >
               Export
@@ -320,33 +458,39 @@ export function OffersPage() {
           </div>
         </div>
 
-        {selectedIds.length > 0 ? (
+        {selectedIds.length > 0 && canMutate ? (
           <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3 rounded-xl bg-navy px-4 py-3">
             <span className="text-[13px] font-semibold text-white">
               {selectedIds.length} selected
             </span>
             <span className="text-[12px] font-medium text-white/55">Bulk:</span>
-            <button
-              type="button"
-              onClick={() => setBulkConfirm('activate')}
-              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-navy-active px-3 text-[12px] font-semibold text-white hover:bg-[#2a5699]"
-            >
-              Activate
-            </button>
-            <button
-              type="button"
-              onClick={() => setBulkConfirm('pause')}
-              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-navy-active px-3 text-[12px] font-semibold text-white hover:bg-[#2a5699]"
-            >
-              Pause
-            </button>
-            <button
-              type="button"
-              onClick={() => setBulkConfirm('delete')}
-              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
-            >
-              Delete
-            </button>
+            {canEdit ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setBulkConfirm('activate')}
+                  className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-navy-active px-3 text-[12px] font-semibold text-white hover:bg-[#2a5699]"
+                >
+                  Activate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkConfirm('pause')}
+                  className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-navy-active px-3 text-[12px] font-semibold text-white hover:bg-[#2a5699]"
+                >
+                  Pause
+                </button>
+              </>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => setBulkConfirm('delete')}
+                className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
+              >
+                Delete
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -442,7 +586,7 @@ export function OffersPage() {
                   {pageItems.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
-                        No offers match your filters.
+                        {loading ? 'Loading offers…' : 'No offers match your filters.'}
                       </td>
                     </tr>
                   ) : null}
@@ -453,7 +597,21 @@ export function OffersPage() {
 
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border bg-white px-4 py-3.5">
             <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {filtered.length}
+              Showing {rangeStart}–{rangeEnd} of {total}
+              <span className="mx-1.5 text-border">·</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIncludeDeleted((v) => !v)
+                  setPage(1)
+                }}
+                className={[
+                  'font-semibold',
+                  includeDeleted ? 'text-navy' : 'text-[#3B6FB6]',
+                ].join(' ')}
+              >
+                Include deleted
+              </button>
             </p>
             <div className="flex flex-wrap items-center gap-1">
               <PagerButton
@@ -489,13 +647,49 @@ export function OffersPage() {
       <ConfirmDialog
         open={confirmDelete !== null}
         title="Delete offer"
-        message={`Delete “${confirmDelete?.title}”? Frontend only.`}
+        message={`Delete “${confirmDelete?.title}”?`}
         confirmLabel="Delete"
         destructive
         onCancel={() => setConfirmDelete(null)}
         onConfirm={() => {
-          if (confirmDelete) deleteOffer(confirmDelete.id)
-          setConfirmDelete(null)
+          void (async () => {
+            if (!confirmDelete) return
+            try {
+              setError(null)
+              await softDeleteOfferApi(confirmDelete.id)
+              setConfirmDelete(null)
+              closeMenu()
+              await loadOffers()
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Unable to delete offer')
+              setConfirmDelete(null)
+              closeMenu()
+            }
+          })()
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmRestore !== null}
+        title="Restore offer"
+        message={`Restore “${confirmRestore?.title}”?`}
+        confirmLabel="Restore"
+        onCancel={() => setConfirmRestore(null)}
+        onConfirm={() => {
+          void (async () => {
+            if (!confirmRestore) return
+            try {
+              setError(null)
+              await restoreOfferApi(confirmRestore.id)
+              setConfirmRestore(null)
+              closeMenu()
+              await loadOffers()
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Unable to restore offer')
+              setConfirmRestore(null)
+              closeMenu()
+            }
+          })()
         }}
       />
 
@@ -508,14 +702,14 @@ export function OffersPage() {
               ? 'Pause selected'
               : 'Activate selected'
         }
-        message={`Apply this action to ${selectedIds.length} selected offer(s)? Frontend only.`}
+        message={`Apply this action to ${selectedIds.length} selected offer(s)?`}
         confirmLabel={
           bulkConfirm === 'delete' ? 'Delete' : bulkConfirm === 'pause' ? 'Pause' : 'Activate'
         }
         destructive={bulkConfirm === 'delete'}
         onCancel={() => setBulkConfirm(null)}
         onConfirm={() => {
-          if (bulkConfirm) runBulk(bulkConfirm)
+          if (bulkConfirm) void runBulk(bulkConfirm)
         }}
       />
     </div>

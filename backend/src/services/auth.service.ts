@@ -1,8 +1,16 @@
 import bcrypt from 'bcrypt'
 import { prisma } from '../lib/prisma.js'
 import { signAuthToken } from '../lib/jwt.js'
-import { SUPER_ADMIN_ROLE, type AuthUser } from '../types/auth.js'
+import {
+  PORTAL_ROLES,
+  roleLabelFromCode,
+  type AuthUser,
+} from '../types/auth.js'
 import { AppError } from '../utils/errors.js'
+import {
+  ensureRolePermissionDefaults,
+  getPermissionsForUserId,
+} from './rbac.service.js'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -11,17 +19,22 @@ export interface LoginResult {
   user: AuthUser
 }
 
-function toAuthUser(user: {
+async function toAuthUser(user: {
   id: string
   email: string
   name: string
+  roleId: string
   role: { name: string }
-}): AuthUser {
+}): Promise<AuthUser> {
+  await ensureRolePermissionDefaults()
+  const permissions = await getPermissionsForUserId(user.id)
   return {
     id: user.id,
     email: user.email,
     name: user.name,
     role: user.role.name,
+    roleLabel: roleLabelFromCode(user.role.name),
+    permissions,
   }
 }
 
@@ -49,7 +62,7 @@ export async function loginWithEmailPassword(
     include: { role: true },
   })
 
-  if (!user || !user.isActive) {
+  if (!user || user.deletedAt || !user.isActive || user.status !== 'active') {
     throw new AppError(401, 'Invalid email or password')
   }
 
@@ -58,9 +71,14 @@ export async function loginWithEmailPassword(
     throw new AppError(401, 'Invalid email or password')
   }
 
-  if (user.role.name !== SUPER_ADMIN_ROLE) {
+  if (!(PORTAL_ROLES as readonly string[]).includes(user.role.name)) {
     throw new AppError(403, 'You do not have permission to access this portal')
   }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  })
 
   const token = signAuthToken({
     sub: user.id,
@@ -69,7 +87,7 @@ export async function loginWithEmailPassword(
 
   return {
     token,
-    user: toAuthUser(user),
+    user: await toAuthUser(user),
   }
 }
 
@@ -79,8 +97,12 @@ export async function getAuthenticatedUser(userId: string): Promise<AuthUser> {
     include: { role: true },
   })
 
-  if (!user || !user.isActive) {
+  if (!user || user.deletedAt || !user.isActive || user.status !== 'active') {
     throw new AppError(401, 'Unauthenticated')
+  }
+
+  if (!(PORTAL_ROLES as readonly string[]).includes(user.role.name)) {
+    throw new AppError(403, 'Forbidden')
   }
 
   return toAuthUser(user)

@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { MemberStatusBadge } from '../components/members/MemberStatusBadge'
+import { useAuth } from '../context/AuthContext'
 import {
-  getMemberById,
-  setMemberStatus,
-  softDeleteMember,
-  subscribeMembers,
-} from '../services/memberStore'
+  getMemberApi,
+  restoreMemberApi,
+  softDeleteMemberApi,
+  updateMemberStatusApi,
+} from '../services/memberApi'
+import { canDeleteInModule, canEditInModule } from '../types/auth'
 import type { Member } from '../types/member'
 
 type DetailTab =
@@ -19,7 +21,10 @@ type DetailTab =
   | 'support'
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -41,21 +46,57 @@ function stars(rating: number): string {
 export function MemberDetailPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const [member, setMember] = useState(() => getMemberById(id))
+  const { user } = useAuth()
+  const canEdit = canEditInModule(user, 'Members')
+  const canDelete = canDeleteInModule(user, 'Members')
+  const [member, setMember] = useState<Member | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<DetailTab>('overview')
-  const [confirm, setConfirm] = useState<'deactivate' | 'delete' | null>(null)
+  const [confirm, setConfirm] = useState<'deactivate' | 'delete' | 'restore' | null>(null)
 
   useEffect(() => {
-    setMember(getMemberById(id))
+    let cancelled = false
+    setLoading(true)
+    setError(null)
     setTab('overview')
-    return subscribeMembers(() => setMember(getMemberById(id)))
+    getMemberApi(id, true)
+      .then((data) => {
+        if (!cancelled) setMember(data)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setMember(null)
+          setError(err instanceof Error ? err.message : 'Unable to load member')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [id])
+
+  async function reload(): Promise<void> {
+    const data = await getMemberApi(id, true)
+    setMember(data)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <p className="text-[13px] text-muted">Loading member…</p>
+      </div>
+    )
+  }
 
   if (!member) {
     return (
       <div className="flex h-full items-center justify-center px-6">
         <div className="text-center">
           <h1 className="text-[20px] font-bold text-navy">Member not found</h1>
+          {error ? <p className="mt-2 text-[13px] text-action">{error}</p> : null}
           <Link to="/members" className="mt-3 inline-block text-[13px] font-semibold text-navy underline">
             Back to members
           </Link>
@@ -63,6 +104,8 @@ export function MemberDetailPage() {
       </div>
     )
   }
+
+  const isDeleted = member.status === 'deleted'
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -100,20 +143,38 @@ export function MemberDetailPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setConfirm('deactivate')}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
-            >
-              Deactivate
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirm('delete')}
-              className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
-            >
-              Delete
-            </button>
+            {isDeleted ? (
+              canDelete ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirm('restore')}
+                  className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                >
+                  Restore
+                </button>
+              ) : null
+            ) : (
+              <>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirm('deactivate')}
+                    className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                  >
+                    Deactivate
+                  </button>
+                ) : null}
+                {canDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirm('delete')}
+                    className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
+                  >
+                    Delete
+                  </button>
+                ) : null}
+              </>
+            )}
           </div>
         </div>
 
@@ -148,6 +209,7 @@ export function MemberDetailPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+        {error ? <p className="mb-3 text-[12px] text-action">{error}</p> : null}
         {tab === 'overview' ? <OverviewSection member={member} /> : null}
         {tab === 'purchases' ? <PurchasesSection member={member} /> : null}
         {tab === 'redemptions' ? <RedemptionsSection member={member} /> : null}
@@ -163,8 +225,17 @@ export function MemberDetailPage() {
         confirmLabel="Deactivate"
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          setMemberStatus(member.id, 'inactive')
-          setConfirm(null)
+          void (async () => {
+            try {
+              setError(null)
+              await updateMemberStatusApi(member.id, 'inactive')
+              await reload()
+              setConfirm(null)
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Unable to deactivate member')
+              setConfirm(null)
+            }
+          })()
         }}
       />
       <ConfirmDialog
@@ -175,9 +246,37 @@ export function MemberDetailPage() {
         destructive
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          softDeleteMember(member.id)
-          setConfirm(null)
-          navigate('/members')
+          void (async () => {
+            try {
+              setError(null)
+              await softDeleteMemberApi(member.id)
+              setConfirm(null)
+              navigate('/members')
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Unable to delete member')
+              setConfirm(null)
+            }
+          })()
+        }}
+      />
+      <ConfirmDialog
+        open={confirm === 'restore'}
+        title="Restore member?"
+        message={`Restore ${member.fullName} to the member list? They will return as inactive.`}
+        confirmLabel="Restore"
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          void (async () => {
+            try {
+              setError(null)
+              await restoreMemberApi(member.id)
+              await reload()
+              setConfirm(null)
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Unable to restore member')
+              setConfirm(null)
+            }
+          })()
         }}
       />
     </div>
@@ -233,7 +332,9 @@ function PurchasesSection({ member }: { member: Member }) {
     <section className="overflow-hidden rounded-xl border border-border bg-white">
       <div className="border-b border-border px-5 py-4">
         <h2 className="text-[15px] font-bold text-navy">Purchases</h2>
-        <p className="mt-0.5 text-[12px] text-muted">Membership and payment history</p>
+        <p className="mt-0.5 text-[12px] text-muted">
+          Membership and payment history (stub until Purchases module)
+        </p>
       </div>
       {member.purchases.length === 0 ? (
         <p className="px-5 py-10 text-center text-[13px] text-muted">No purchases yet.</p>
@@ -285,7 +386,9 @@ function RedemptionsSection({ member }: { member: Member }) {
     <section className="overflow-hidden rounded-xl border border-border bg-white">
       <div className="border-b border-border px-5 py-4">
         <h2 className="text-[15px] font-bold text-navy">Redemptions</h2>
-        <p className="mt-0.5 text-[12px] text-muted">Offer redemption history</p>
+        <p className="mt-0.5 text-[12px] text-muted">
+          Offer redemption history (stub until Redemptions module)
+        </p>
       </div>
       {member.redemptions.length === 0 ? (
         <p className="px-5 py-10 text-center text-[13px] text-muted">No redemptions yet.</p>
@@ -325,7 +428,9 @@ function ReviewsSection({ member }: { member: Member }) {
   return (
     <section className="rounded-xl border border-border bg-white p-5">
       <h2 className="text-[15px] font-bold text-navy">Reviews</h2>
-      <p className="mt-0.5 text-[12px] text-muted">Reviews submitted by this member</p>
+      <p className="mt-0.5 text-[12px] text-muted">
+        Reviews submitted by this member (stub until Reviews module)
+      </p>
       {member.reviews.length === 0 ? (
         <p className="mt-8 text-center text-[13px] text-muted">No reviews yet.</p>
       ) : (

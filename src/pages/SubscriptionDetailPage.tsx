@@ -3,11 +3,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { SubscriptionStatusBadge } from '../components/subscriptions/SubscriptionStatusBadge'
 import { formatDate, Th } from '../components/cms/AdminListPrimitives'
+import { useAuth } from '../context/AuthContext'
 import {
-  getSubscriptionById,
-  setSubscriptionStatus,
-  subscribeSubscriptions,
-} from '../services/subscriptionStore'
+  getSubscriptionApi,
+  updateSubscriptionStatusApi,
+} from '../services/subscriptionApi'
+import { canEditInModule } from '../types/auth'
+import type { Subscription } from '../types/subscription'
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -19,19 +21,54 @@ function initials(name: string): string {
 export function SubscriptionDetailPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const [item, setItem] = useState(() => getSubscriptionById(id))
+  const { user } = useAuth()
+  const canEdit = canEditInModule(user, 'Subscriptions')
+  const [item, setItem] = useState<Subscription | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<'suspend' | 'cancel' | null>(null)
 
   useEffect(() => {
-    setItem(getSubscriptionById(id))
-    return subscribeSubscriptions(() => setItem(getSubscriptionById(id)))
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    getSubscriptionApi(id)
+      .then((data) => {
+        if (!cancelled) setItem(data)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setItem(null)
+          setError(err instanceof Error ? err.message : 'Unable to load subscription')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [id])
+
+  async function reload(): Promise<void> {
+    const data = await getSubscriptionApi(id)
+    setItem(data)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <p className="text-[13px] text-muted">Loading subscription…</p>
+      </div>
+    )
+  }
 
   if (!item) {
     return (
       <div className="flex h-full items-center justify-center px-6">
         <div className="text-center">
           <h1 className="text-[20px] font-bold text-navy">Subscription not found</h1>
+          {error ? <p className="mt-2 text-[13px] text-action">{error}</p> : null}
           <Link
             to="/subscriptions"
             className="mt-3 inline-block text-[13px] font-semibold text-navy underline"
@@ -94,31 +131,46 @@ export function SubscriptionDetailPage() {
             >
               View member
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (isSuspended) {
-                  setSubscriptionStatus(item.id, 'active')
-                } else {
-                  setConfirm('suspend')
-                }
-              }}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
-            >
-              {isSuspended ? 'Resume' : 'Suspend'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirm('cancel')}
-              className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
-            >
-              Cancel subscription
-            </button>
+            {canEdit ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isSuspended) {
+                      void (async () => {
+                        try {
+                          setError(null)
+                          await updateSubscriptionStatusApi(item.id, 'active')
+                          await reload()
+                        } catch (err) {
+                          setError(
+                            err instanceof Error ? err.message : 'Unable to resume subscription',
+                          )
+                        }
+                      })()
+                    } else {
+                      setConfirm('suspend')
+                    }
+                  }}
+                  className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                >
+                  {isSuspended ? 'Resume' : 'Suspend'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirm('cancel')}
+                  className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
+                >
+                  Cancel subscription
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+        {error ? <p className="mb-3 text-[12px] text-action">{error}</p> : null}
         <div className="grid gap-4 xl:grid-cols-2">
           <InfoCard title="Subscription overview" subtitle="Plan, billing and validity">
             <dl className="grid gap-3 sm:grid-cols-2">
@@ -211,8 +263,17 @@ export function SubscriptionDetailPage() {
         confirmLabel="Suspend"
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          setSubscriptionStatus(item.id, 'suspended')
-          setConfirm(null)
+          void (async () => {
+            try {
+              setError(null)
+              await updateSubscriptionStatusApi(item.id, 'suspended')
+              await reload()
+              setConfirm(null)
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Unable to suspend subscription')
+              setConfirm(null)
+            }
+          })()
         }}
       />
       <ConfirmDialog
@@ -223,8 +284,17 @@ export function SubscriptionDetailPage() {
         destructive
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          setSubscriptionStatus(item.id, 'suspended')
-          setConfirm(null)
+          void (async () => {
+            try {
+              setError(null)
+              await updateSubscriptionStatusApi(item.id, 'suspended')
+              await reload()
+              setConfirm(null)
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Unable to cancel subscription')
+              setConfirm(null)
+            }
+          })()
         }}
       />
     </div>

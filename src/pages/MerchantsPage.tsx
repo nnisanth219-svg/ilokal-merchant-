@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { MerchantStatusBadge } from '../components/merchants/MerchantStatusBadge'
@@ -7,59 +7,28 @@ import {
   ViewportAwareMenu,
   type ViewportMenuItem,
 } from '../components/ui/ViewportAwareMenu'
+import { useAuth } from '../context/AuthContext'
 import { MERCHANT_CATEGORIES, MALAYSIA_STATES } from '../data/merchants'
 import {
-  bulkChangeCategory,
-  bulkSetStatus,
-  bulkSoftDelete,
-  getLiveMerchantCount,
-  getMerchants,
-  setMerchantStatus,
-  softDeleteMerchant,
-  subscribeMerchants,
-} from '../services/merchantStore'
+  bulkChangeMerchantCategoryApi,
+  bulkSoftDeleteMerchantsApi,
+  bulkUpdateMerchantStatusApi,
+  listMerchantsApi,
+  restoreMerchantApi,
+  softDeleteMerchantApi,
+  updateMerchantStatusApi,
+} from '../services/merchantApi'
+import {
+  canCreateInModule,
+  canDeleteInModule,
+  canEditInModule,
+} from '../types/auth'
 import type { Merchant, MerchantStatus } from '../types/merchant'
 
 const PAGE_SIZE = 25
-const FEATURED_ORDER = ['m-0148', 'm-0203', 'm-0217', 'm-0091', 'm-0176']
 
 type StatusFilter = MerchantStatus | 'all'
 type AddedFilter = 'any' | '7d' | '30d' | '90d'
-
-function matchesSearch(merchant: Merchant, query: string): boolean {
-  if (!query.trim()) return true
-  const q = query.toLowerCase()
-  return [
-    merchant.businessName,
-    merchant.city,
-    merchant.phone,
-    merchant.registrationNo,
-    merchant.merchantCode,
-  ]
-    .join(' ')
-    .toLowerCase()
-    .includes(q)
-}
-
-function matchesAdded(merchant: Merchant, added: AddedFilter): boolean {
-  if (added === 'any') return true
-  const created = new Date(merchant.createdAt).getTime()
-  const days = added === '7d' ? 7 : added === '30d' ? 30 : 90
-  return Date.now() - created <= days * 24 * 60 * 60 * 1000
-}
-
-function sortMerchants(list: Merchant[]): Merchant[] {
-  return [...list].sort((a, b) => {
-    const ai = FEATURED_ORDER.indexOf(a.id)
-    const bi = FEATURED_ORDER.indexOf(b.id)
-    if (ai !== -1 || bi !== -1) {
-      if (ai === -1) return 1
-      if (bi === -1) return -1
-      return ai - bi
-    }
-    return a.businessName.localeCompare(b.businessName)
-  })
-}
 
 function SearchIcon() {
   return (
@@ -80,8 +49,23 @@ function ChevronDown() {
 
 export function MerchantsPage() {
   const navigate = useNavigate()
-  const [merchants, setMerchants] = useState(getMerchants)
+  const { user } = useAuth()
+  const canEdit = canEditInModule(user, 'Merchants')
+  const canDelete = canDeleteInModule(user, 'Merchants')
+  const canCreate = canCreateInModule(user, 'Merchants')
+  const canMutate = canEdit || canDelete
+  const [merchants, setMerchants] = useState<Merchant[]>([])
+  const [liveCount, setLiveCount] = useState(0)
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [category, setCategory] = useState('All')
   const [state, setState] = useState('All')
@@ -92,32 +76,51 @@ export function MerchantsPage() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
   const [confirm, setConfirm] = useState<{
-    type: 'activate' | 'deactivate' | 'delete'
+    type: 'activate' | 'deactivate' | 'delete' | 'restore'
     merchant: Merchant
   } | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState<'activate' | 'deactivate' | 'delete' | null>(null)
 
-  useEffect(() => subscribeMerchants(() => setMerchants(getMerchants())), [])
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
-  const filtered = useMemo(() => {
-    const list = merchants.filter((m) => {
-      if (!includeDeleted && m.status === 'deleted') return false
-      if (status !== 'all' && m.status !== status) return false
-      if (category !== 'All' && m.category !== category) return false
-      if (state !== 'All' && m.state !== state) return false
-      if (!matchesSearch(m, search)) return false
-      if (!matchesAdded(m, added)) return false
-      return true
-    })
-    return sortMerchants(list)
-  }, [merchants, includeDeleted, status, category, state, search, added])
+  const loadMerchants = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await listMerchantsApi({
+        page,
+        pageSize: PAGE_SIZE,
+        search: debouncedSearch,
+        status,
+        category,
+        state,
+        added,
+        includeDeleted,
+      })
+      setMerchants(data.merchants)
+      setLiveCount(data.liveCount)
+      setPagination(data.pagination)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load merchants')
+      setMerchants([])
+    } finally {
+      setLoading(false)
+    }
+  }, [page, debouncedSearch, status, category, state, added, includeDeleted])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  useEffect(() => {
+    void loadMerchants()
+  }, [loadMerchants])
+
+  const pageItems = merchants
+  const totalPages = Math.max(1, pagination.totalPages)
   const currentPage = Math.min(page, totalPages)
-  const pageItems = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
-  const rangeStart = filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
-  const rangeEnd = Math.min(currentPage * PAGE_SIZE, filtered.length)
-  const liveCount = getLiveMerchantCount()
+  const total = pagination.total
+  const rangeStart = total === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, total)
   const allPageSelected =
     pageItems.length > 0 && pageItems.every((m) => selectedIds.includes(m.id))
 
@@ -137,33 +140,55 @@ export function MerchantsPage() {
           label: 'View details',
           onClick: () => navigate(`/merchants/${activeMerchant.id}`),
         },
-        {
-          id: 'edit',
-          label: 'Edit merchant',
-          onClick: () => navigate(`/merchants/${activeMerchant.id}/edit`),
-        },
-        {
-          id: 'activate',
-          label: 'Approve & activate',
-          onClick: () => setConfirm({ type: 'activate', merchant: activeMerchant }),
-        },
-        {
-          id: 'deactivate',
-          label: 'Deactivate',
-          onClick: () => setConfirm({ type: 'deactivate', merchant: activeMerchant }),
-        },
+        ...(canEdit
+          ? [
+              {
+                id: 'edit',
+                label: 'Edit merchant',
+                onClick: () => navigate(`/merchants/${activeMerchant.id}/edit`),
+              },
+            ]
+          : []),
+        ...(activeMerchant.status === 'deleted'
+          ? canDelete
+            ? [
+                {
+                  id: 'restore',
+                  label: 'Restore',
+                  onClick: () => setConfirm({ type: 'restore' as const, merchant: activeMerchant }),
+                },
+              ]
+            : []
+          : canEdit
+            ? [
+                {
+                  id: 'activate',
+                  label: 'Approve & activate',
+                  onClick: () => setConfirm({ type: 'activate' as const, merchant: activeMerchant }),
+                },
+                {
+                  id: 'deactivate',
+                  label: 'Deactivate',
+                  onClick: () => setConfirm({ type: 'deactivate' as const, merchant: activeMerchant }),
+                },
+              ]
+            : []),
         {
           id: 'offers',
           label: 'Manage offers',
           onClick: () => navigate(`/merchants/${activeMerchant.id}/offers`),
         },
-        {
-          id: 'delete',
-          label: 'Delete merchant',
-          destructive: true,
-          dividerBefore: true,
-          onClick: () => setConfirm({ type: 'delete', merchant: activeMerchant }),
-        },
+        ...(activeMerchant.status === 'deleted' || !canDelete
+          ? []
+          : [
+              {
+                id: 'delete',
+                label: 'Delete merchant',
+                destructive: true,
+                dividerBefore: true,
+                onClick: () => setConfirm({ type: 'delete' as const, merchant: activeMerchant }),
+              },
+            ]),
       ]
     : []
 
@@ -198,21 +223,48 @@ export function MerchantsPage() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
-  function runBulk(action: 'activate' | 'deactivate' | 'delete'): void {
-    if (action === 'activate') bulkSetStatus(selectedIds, 'active')
-    if (action === 'deactivate') bulkSetStatus(selectedIds, 'inactive')
-    if (action === 'delete') bulkSoftDelete(selectedIds)
-    setSelectedIds([])
-    setBulkConfirm(null)
+  async function runBulk(action: 'activate' | 'deactivate' | 'delete'): Promise<void> {
+    try {
+      setError(null)
+      if (action === 'activate') await bulkUpdateMerchantStatusApi(selectedIds, 'active')
+      if (action === 'deactivate') await bulkUpdateMerchantStatusApi(selectedIds, 'inactive')
+      if (action === 'delete') await bulkSoftDeleteMerchantsApi(selectedIds)
+      setSelectedIds([])
+      setBulkConfirm(null)
+      await loadMerchants()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update merchants')
+      setBulkConfirm(null)
+    }
   }
 
-  function handleConfirm(): void {
+  async function handleConfirm(): Promise<void> {
     if (!confirm) return
-    if (confirm.type === 'activate') setMerchantStatus(confirm.merchant.id, 'active')
-    if (confirm.type === 'deactivate') setMerchantStatus(confirm.merchant.id, 'inactive')
-    if (confirm.type === 'delete') softDeleteMerchant(confirm.merchant.id)
-    setConfirm(null)
-    closeMenu()
+    try {
+      setError(null)
+      if (confirm.type === 'activate') await updateMerchantStatusApi(confirm.merchant.id, 'active')
+      if (confirm.type === 'deactivate') await updateMerchantStatusApi(confirm.merchant.id, 'inactive')
+      if (confirm.type === 'delete') await softDeleteMerchantApi(confirm.merchant.id)
+      if (confirm.type === 'restore') await restoreMerchantApi(confirm.merchant.id)
+      setConfirm(null)
+      closeMenu()
+      await loadMerchants()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update merchant')
+      setConfirm(null)
+      closeMenu()
+    }
+  }
+
+  async function handleBulkChangeCategory(): Promise<void> {
+    try {
+      setError(null)
+      await bulkChangeMerchantCategoryApi(selectedIds, MERCHANT_CATEGORIES[0])
+      setSelectedIds([])
+      await loadMerchants()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to change category')
+    }
   }
 
   function locationLabel(merchant: Merchant): string {
@@ -229,6 +281,12 @@ export function MerchantsPage() {
             <p className="mt-0.5 text-[12px] text-muted">
               Search, filter, bulk actions, row menu → activate / deactivate / soft delete
             </p>
+            {loading ? (
+              <p className="mt-1 text-[12px] text-muted">Loading…</p>
+            ) : null}
+            {error ? (
+              <p className="mt-1 text-[12px] text-action">{error}</p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <button
@@ -237,12 +295,14 @@ export function MerchantsPage() {
             >
               Import CSV
             </button>
-            <Link
-              to="/merchants/create"
-              className="inline-flex h-[38px] min-h-[38px] items-center rounded-lg bg-action px-4 text-[13px] font-semibold text-white transition hover:bg-[#c82027]"
-            >
-              + New merchant
-            </Link>
+            {canCreate ? (
+              <Link
+                to="/merchants/create"
+                className="inline-flex h-[38px] min-h-[38px] items-center rounded-lg bg-action px-4 text-[13px] font-semibold text-white transition hover:bg-[#c82027]"
+              >
+                + New merchant
+              </Link>
+            ) : null}
           </div>
         </div>
       </header>
@@ -350,28 +410,28 @@ export function MerchantsPage() {
           </div>
         </div>
 
-        {selectedIds.length > 0 ? (
+        {selectedIds.length > 0 && canMutate ? (
           <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3 rounded-xl bg-navy px-4 py-3">
             <span className="text-[13px] font-semibold text-white">
               {selectedIds.length} selected
             </span>
             <span className="text-[12px] font-medium text-white/55">Bulk:</span>
-            <BulkBtn label="Activate" onClick={() => setBulkConfirm('activate')} />
-            <BulkBtn label="Deactivate" onClick={() => setBulkConfirm('deactivate')} />
-            <BulkBtn
-              label="Change category"
-              onClick={() => {
-                bulkChangeCategory(selectedIds, MERCHANT_CATEGORIES[0])
-                setSelectedIds([])
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => setBulkConfirm('delete')}
-              className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
-            >
-              Delete
-            </button>
+            {canEdit ? (
+              <>
+                <BulkBtn label="Activate" onClick={() => setBulkConfirm('activate')} />
+                <BulkBtn label="Deactivate" onClick={() => setBulkConfirm('deactivate')} />
+                <BulkBtn label="Change category" onClick={() => void handleBulkChangeCategory()} />
+              </>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => setBulkConfirm('delete')}
+                className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
+              >
+                Delete
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -476,7 +536,7 @@ export function MerchantsPage() {
                 {pageItems.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-4 py-14 text-center text-[13px] text-muted">
-                      No merchants match your filters.
+                      {loading ? 'Loading merchants…' : 'No merchants match your filters.'}
                     </td>
                   </tr>
                 ) : null}
@@ -487,7 +547,7 @@ export function MerchantsPage() {
 
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border bg-white px-4 py-3.5">
             <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {filtered.length}
+              Showing {rangeStart}–{rangeEnd} of {total}
               <span className="mx-1.5 text-border">·</span>
               <button
                 type="button"
@@ -541,25 +601,31 @@ export function MerchantsPage() {
             ? 'Delete merchant'
             : confirm?.type === 'deactivate'
               ? 'Deactivate merchant'
-              : 'Approve & activate'
+              : confirm?.type === 'restore'
+                ? 'Restore merchant'
+                : 'Approve & activate'
         }
         message={
           confirm?.type === 'delete'
-            ? `Soft delete “${confirm.merchant.businessName}”? Frontend only.`
+            ? `Soft delete “${confirm.merchant.businessName}”?`
             : confirm?.type === 'deactivate'
               ? `Deactivate “${confirm?.merchant.businessName}”?`
-              : `Approve and activate “${confirm?.merchant.businessName}”?`
+              : confirm?.type === 'restore'
+                ? `Restore “${confirm?.merchant.businessName}”?`
+                : `Approve and activate “${confirm?.merchant.businessName}”?`
         }
         confirmLabel={
           confirm?.type === 'delete'
             ? 'Delete'
             : confirm?.type === 'deactivate'
               ? 'Deactivate'
-              : 'Activate'
+              : confirm?.type === 'restore'
+                ? 'Restore'
+                : 'Activate'
         }
         destructive={confirm?.type === 'delete'}
         onCancel={() => setConfirm(null)}
-        onConfirm={handleConfirm}
+        onConfirm={() => void handleConfirm()}
       />
 
       <ConfirmDialog
@@ -571,7 +637,7 @@ export function MerchantsPage() {
               ? 'Deactivate selected'
               : 'Activate selected'
         }
-        message={`Apply this action to ${selectedIds.length} selected merchant(s)? Frontend only.`}
+        message={`Apply this action to ${selectedIds.length} selected merchant(s)?`}
         confirmLabel={
           bulkConfirm === 'delete'
             ? 'Delete'
@@ -582,7 +648,7 @@ export function MerchantsPage() {
         destructive={bulkConfirm === 'delete'}
         onCancel={() => setBulkConfirm(null)}
         onConfirm={() => {
-          if (bulkConfirm) runBulk(bulkConfirm)
+          if (bulkConfirm) void runBulk(bulkConfirm)
         }}
       />
     </div>

@@ -4,12 +4,14 @@ const STYLES: Record<AdminUserStatus, string> = {
   active: 'bg-[#E8F6F0] text-success',
   pending: 'bg-[#FFF4D6] text-[#A67A00]',
   inactive: 'bg-[#F0EEEA] text-muted',
+  deleted: 'bg-[#FCE8E8] text-action',
 }
 
 const LABELS: Record<AdminUserStatus, string> = {
   active: 'Active',
   pending: 'Pending',
   inactive: 'Inactive',
+  deleted: 'Deleted',
 }
 
 export function AdminUserStatusBadge({ status }: { status: AdminUserStatus }) {

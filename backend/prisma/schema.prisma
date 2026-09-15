@@ -9,29 +9,490 @@ datasource db {
   provider = "postgresql"
 }
 
-model Role {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum MerchantStatus {
+  active
+  pending
+  inactive
 
-  users     User[]
+  @@map("merchant_status")
+}
+
+enum MerchantOutletType {
+  single
+  multi
+  online
+
+  @@map("merchant_outlet_type")
+}
+
+enum UserStatus {
+  active
+  pending
+  inactive
+
+  @@map("user_status")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users           User[]
+  rolePermissions RolePermission[]
 
   @@map("roles")
 }
 
+model Permission {
+  id          String   @id @default(uuid())
+  module      String
+  action      String
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+  userPermissions UserPermission[]
+
+  @@unique([module, action])
+  @@index([module])
+  @@index([action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String @id @default(uuid())
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model UserPermission {
+  id           String @id @default(uuid())
+  userId       String
+  permissionId String
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@index([userId])
+  @@index([permissionId])
+  @@map("user_permissions")
+}
+
 model User {
-  id           String   @id @default(uuid())
+  id           String     @id @default(uuid())
   name         String
-  email        String   @unique
+  email        String     @unique
   passwordHash String
   roleId       String
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  isActive     Boolean    @default(true)
+  status       UserStatus @default(active)
+  invitedAt    DateTime?
+  lastLoginAt  DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  role         Role     @relation(fields: [roleId], references: [id])
+  role            Role             @relation(fields: [roleId], references: [id])
+  auditLogs       AuditLog[]
+  userPermissions UserPermission[]
 
   @@index([roleId])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@index([isActive])
   @@map("users")
+}
+
+model Merchant {
+  id                 String             @id @default(uuid())
+  merchantCode       String             @unique
+  businessName       String
+  legalName          String             @default("")
+  category           String
+  subCategories      String[]           @default([])
+  description        String             @default("")
+  registrationNo     String             @default("")
+  priceRange         String             @default("RM RM")
+  phone              String             @default("")
+  email              String             @default("")
+  whatsapp           String             @default("")
+  website            String             @default("")
+  city               String             @default("")
+  state              String             @default("")
+  address            String             @default("")
+  postcode           String             @default("")
+  latitude           String             @default("")
+  longitude          String             @default("")
+  outletType         MerchantOutletType @default(single)
+  picName            String             @default("")
+  hoursWeekday       String             @default("")
+  hoursWeekend       String             @default("")
+  hoursPublicHoliday String             @default("")
+  logoUrl            String?
+  coverUrl           String?
+  galleryUrls        String[]           @default([])
+  featured           Boolean            @default(false)
+  status             MerchantStatus     @default(pending)
+  offersCount        Int                @default(0)
+  redeemedCount      Int                @default(0)
+  rating             Float              @default(0)
+  ratingsCount       Int                @default(0)
+  profileViews       Int                @default(0)
+  redeemed30d        Int                @default(0)
+  uniqueMembers      Int                @default(0)
+  membersReached     Int                @default(0)
+  slug               String             @unique
+  createdBy          String             @default("")
+  /// Display-only offer summaries for merchant detail stubs
+  offers             Json               @default("[]")
+  /// Activity feed for merchant detail
+  activities         Json               @default("[]")
+  categoryId         String?
+  deletedAt          DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  categoryRecord     Category?          @relation(fields: [categoryId], references: [id])
+  offerRecords       Offer[]
+  redemptions        Redemption[]
+  reviews            Review[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@index([category])
+  @@index([categoryId])
+  @@index([state])
+  @@index([businessName])
+  @@index([createdAt])
+  @@index([email])
+  @@map("merchants")
+}
+
+enum OfferStatus {
+  live
+  scheduled
+  draft
+  expired
+  paused
+
+  @@map("offer_status")
+}
+
+enum OfferType {
+  percentage
+  fixed
+  free_item
+  set_price
+  other
+  bogo
+  free_gift
+  member_pricing
+  voucher
+
+  @@map("offer_type")
+}
+
+model Offer {
+  id                      String     @id @default(uuid())
+  offerCode               String     @unique
+  merchantId              String
+  title                   String
+  description             String     @default("")
+  termsAndConditions      String     @default("")
+  offerType               OfferType
+  benefitLabel            String     @default("")
+  benefitValue            String     @default("")
+  eligibility             String     @default("")
+  validFrom               DateTime   @db.Date
+  validTo                 DateTime   @db.Date
+  validityLabel           String     @default("")
+  redemptionInstructions  String     @default("")
+  redemptionLimit         String     @default("")
+  maxRedemptions          Int?
+  maxRedemptionsPerMember Int?
+  imageUrl                String?
+  redeemedCount           Int        @default(0)
+  status                  OfferStatus @default(draft)
+  deletedAt               DateTime?
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+  redemptions Redemption[]
+
+  @@index([merchantId])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([offerType])
+  @@index([validFrom])
+  @@index([validTo])
+  @@index([createdAt])
+  @@index([title])
+  @@map("offers")
+}
+
+enum MemberStatus {
+  active
+  expired
+  suspended
+  inactive
+
+  @@map("member_status")
+}
+
+enum MembershipPlan {
+  Annual
+  Monthly
+  None
+
+  @@map("membership_plan")
+}
+
+model Member {
+  id                String         @id @default(uuid())
+  memberCode        String         @unique
+  fullName          String
+  email             String
+  phone             String         @default("")
+  city              String         @default("")
+  status            MemberStatus   @default(active)
+  plan              MembershipPlan @default(None)
+  joinedAt          DateTime
+  expiresAt         DateTime?
+  totalPurchases    Int            @default(0)
+  totalRedemptions  Int            @default(0)
+  reviewsCount      Int            @default(0)
+  deviceName         String         @default("")
+  lastActiveAt      DateTime?
+  appVersion        String         @default("")
+  platform          String         @default("")
+  paymentStatus     String         @default("")
+  /// Display-only stubs until Purchases module exists
+  purchases         Json           @default("[]")
+  /// Legacy stub; prefer Redemption table for member detail
+  redemptions       Json           @default("[]")
+  /// Legacy stub; prefer Review table for member detail
+  reviews           Json           @default("[]")
+  /// Display-only support notes for member detail
+  supportNotes      Json           @default("[]")
+  deletedAt         DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  subscriptions     Subscription[]
+  redemptionRecords Redemption[]
+  reviewRecords     Review[]
+
+  @@index([email])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@index([fullName])
+  @@index([joinedAt])
+  @@index([plan])
+  @@map("members")
+}
+
+enum SubscriptionStatus {
+  active
+  expired
+  suspended
+
+  @@map("subscription_status")
+}
+
+enum SubscriptionPlanType {
+  Monthly
+  Annual
+
+  @@map("subscription_plan_type")
+}
+
+model Subscription {
+  id               String               @id @default(uuid())
+  subscriptionCode String               @unique
+  memberId         String
+  plan             SubscriptionPlanType
+  billing          SubscriptionPlanType
+  startDate        DateTime             @db.Date
+  expiryDate       DateTime             @db.Date
+  status           SubscriptionStatus   @default(active)
+  /// Plan price in MYR for summary / dashboard revenue
+  amount           Float                @default(0)
+  currency         String               @default("MYR")
+  /// Payment history stubs until a Payments module exists
+  payments         Json                 @default("[]")
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id])
+
+  @@index([memberId])
+  @@index([status])
+  @@index([plan])
+  @@index([billing])
+  @@index([expiryDate])
+  @@index([createdAt])
+  @@map("subscriptions")
+}
+
+enum RedemptionStatus {
+  successful
+  failed
+  cancelled
+
+  @@map("redemption_status")
+}
+
+model Redemption {
+  id                 String           @id @default(uuid())
+  redemptionCode     String           @unique
+  memberId           String
+  merchantId         String
+  offerId            String
+  redeemedAt         DateTime
+  status             RedemptionStatus @default(successful)
+  method             String           @default("QR scan")
+  verificationStatus String           @default("Verified")
+  activity           Json             @default("[]")
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  member   Member   @relation(fields: [memberId], references: [id])
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+  offer    Offer    @relation(fields: [offerId], references: [id])
+
+  @@index([memberId])
+  @@index([merchantId])
+  @@index([offerId])
+  @@index([status])
+  @@index([redeemedAt])
+  @@index([createdAt])
+  @@map("redemptions")
+}
+
+enum ReviewStatus {
+  published
+  pending
+  flagged
+  hidden
+
+  @@map("review_status")
+}
+
+model Review {
+  id          String       @id @default(uuid())
+  memberId    String
+  merchantId  String
+  rating      Int
+  text        String       @default("")
+  submittedAt DateTime
+  status      ReviewStatus @default(pending)
+  deletedAt   DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  member   Member   @relation(fields: [memberId], references: [id])
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@index([memberId])
+  @@index([merchantId])
+  @@index([status])
+  @@index([rating])
+  @@index([submittedAt])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@map("reviews")
+}
+
+enum CategoryStatus {
+  active
+  inactive
+
+  @@map("category_status")
+}
+
+model Category {
+  id           String         @id @default(uuid())
+  name         String         @unique
+  slug         String         @unique
+  description  String         @default("")
+  status       CategoryStatus @default(active)
+  displayOrder Int            @default(1)
+  deletedAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  merchants Merchant[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@index([displayOrder])
+  @@index([createdAt])
+  @@map("categories")
+}
+
+enum AuditStatus {
+  success
+  failed
+  warning
+
+  @@map("audit_status")
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+  @@map("settings")
+}
+
+model AuditLog {
+  id            String      @id @default(uuid())
+  actorId       String?
+  actorName     String
+  actorEmail    String      @default("")
+  action        String
+  actionLabel   String
+  module        String
+  entityId      String?
+  entityLabel   String?
+  description   String
+  status        AuditStatus @default(success)
+  reason        String      @default("")
+  previousValue String?
+  newValue      String?
+  metadata      Json?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime    @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([action])
+  @@index([actionLabel])
+  @@index([module])
+  @@index([entityId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("audit_logs")
 }

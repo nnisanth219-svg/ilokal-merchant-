@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { inviteAdminUser } from '../services/adminUserStore'
+import { inviteAdminUserApi } from '../services/adminUserApi'
 import { ADMIN_ROLE_OPTIONS, type AdminRole } from '../types/adminUser'
 
 export function InviteAdminPage() {
@@ -9,6 +9,7 @@ export function InviteAdminPage() {
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<AdminRole>('Admin')
   const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const [sentEmail, setSentEmail] = useState<string | null>(null)
 
   function resetForm(): void {
@@ -16,10 +17,11 @@ export function InviteAdminPage() {
     setEmail('')
     setRole('Admin')
     setError(null)
+    setSaving(false)
     setSentEmail(null)
   }
 
-  function onSubmit(e: FormEvent): void {
+  async function onSubmit(e: FormEvent): Promise<void> {
     e.preventDefault()
     if (!fullName.trim()) {
       setError('Full name is required.')
@@ -30,8 +32,15 @@ export function InviteAdminPage() {
       return
     }
     setError(null)
-    const created = inviteAdminUser({ fullName, email, role })
-    setSentEmail(created.email)
+    setSaving(true)
+    try {
+      const created = await inviteAdminUserApi({ fullName, email, role })
+      setSentEmail(created.email)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to invite admin user')
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (sentEmail) {
@@ -108,7 +117,7 @@ export function InviteAdminPage() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
         <form
-          onSubmit={onSubmit}
+          onSubmit={(e) => void onSubmit(e)}
           className="mx-auto max-w-2xl rounded-xl border border-border bg-white p-5 sm:p-6"
         >
           <div className="space-y-4">
@@ -121,7 +130,8 @@ export function InviteAdminPage() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="e.g. Aisyah Rahman"
-                className="mt-1.5 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
+                disabled={saving}
+                className="mt-1.5 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10 disabled:opacity-60"
               />
             </label>
 
@@ -134,7 +144,8 @@ export function InviteAdminPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@ilokal.my"
-                className="mt-1.5 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
+                disabled={saving}
+                className="mt-1.5 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10 disabled:opacity-60"
               />
             </label>
 
@@ -143,7 +154,8 @@ export function InviteAdminPage() {
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value as AdminRole)}
-                className="mt-1.5 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none focus:border-navy focus:ring-2 focus:ring-navy/10"
+                disabled={saving}
+                className="mt-1.5 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none focus:border-navy focus:ring-2 focus:ring-navy/10 disabled:opacity-60"
               >
                 {ADMIN_ROLE_OPTIONS.map((opt) => (
                   <option key={opt} value={opt}>
@@ -160,15 +172,17 @@ export function InviteAdminPage() {
             <button
               type="button"
               onClick={() => navigate('/admin-users')}
-              className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy hover:bg-page"
+              disabled={saving}
+              className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy hover:bg-page disabled:opacity-60"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary"
+              disabled={saving}
+              className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary disabled:opacity-60"
             >
-              Send invitation
+              {saving ? 'Sending…' : 'Send invitation'}
             </button>
           </div>
         </form>

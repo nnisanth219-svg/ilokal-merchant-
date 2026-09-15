@@ -1,15 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { countUsersByRole, getRoleMatrices } from '../services/adminUserStore'
-import {
-  getSettings,
-  subscribeSettings,
-  updateSettings,
-} from '../services/settingsStore'
-import type { AppSettingsState } from '../types/settings'
-import type { AdminRole } from '../types/adminUser'
+import { useAuth } from '../context/AuthContext'
+import { listAdminRolesApi } from '../services/adminUserApi'
+import { getSettingsApi, updateSettingSectionApi } from '../services/settingsApi'
+import { canEditInModule } from '../types/auth'
+import type { AppSettingsState, SettingKey } from '../types/settings'
+import type { AdminRole, RolePermissionMatrix } from '../types/adminUser'
 
 type SettingsTab = 'general' | 'team' | 'security' | 'notifications'
+type SavableTab = Exclude<SettingsTab, 'team'>
 
 const ROLE_ORDER: AdminRole[] = ['Super Admin', 'Admin', 'Operations']
 
@@ -21,22 +20,78 @@ const ROLE_PERMISSION_BLURBS: Record<AdminRole, string> = {
 
 export function SettingsPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const canEdit = canEditInModule(user, 'Settings')
   const [tab, setTab] = useState<SettingsTab>('general')
-  const [draft, setDraft] = useState<AppSettingsState>(() => structuredClone(getSettings()))
+  const [draft, setDraft] = useState<AppSettingsState | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const [savedBanner, setSavedBanner] = useState(false)
+  const [roles, setRoles] = useState<RolePermissionMatrix[]>([])
+  const [rolesLoading, setRolesLoading] = useState(false)
+  const [rolesError, setRolesError] = useState<string | null>(null)
 
   useEffect(() => {
-    return subscribeSettings(() => {
-      setDraft(structuredClone(getSettings()))
-    })
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    getSettingsApi()
+      .then((data) => {
+        if (!cancelled) setDraft(structuredClone(data))
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Unable to load settings')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  function save(): void {
-    updateSettings(draft)
-    setSavedBanner(true)
-  }
+  useEffect(() => {
+    if (tab !== 'team') return
+    let cancelled = false
+    setRolesLoading(true)
+    setRolesError(null)
+    listAdminRolesApi()
+      .then((data) => {
+        if (!cancelled) setRoles(data)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setRoles([])
+          setRolesError(err instanceof Error ? err.message : 'Unable to load roles')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRolesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [tab])
 
-  const matrices = getRoleMatrices()
+  async function save(): Promise<void> {
+    if (!draft || tab === 'team' || saving) return
+    const key = tab as SettingKey & SavableTab
+    setSaving(true)
+    setError(null)
+    try {
+      const updated = await updateSettingSectionApi(key, draft[key])
+      setDraft((d) => (d ? { ...d, [key]: updated } : d))
+      setSavedBanner(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to save settings')
+      setSavedBanner(false)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -46,6 +101,7 @@ export function SettingsPage() {
           <p className="mt-0.5 text-[12px] text-muted">
             Manage your iLokal admin portal preferences and configuration.
           </p>
+          {error ? <p className="mt-1 text-[12px] text-action">{error}</p> : null}
         </div>
 
         <div className="mt-4 flex flex-wrap gap-1 border-b border-border">
@@ -79,7 +135,17 @@ export function SettingsPage() {
           </div>
         ) : null}
 
-        {tab === 'general' ? (
+        {loading && !draft ? (
+          <p className="py-14 text-center text-[13px] text-muted">Loading settings…</p>
+        ) : null}
+
+        {!loading && !draft ? (
+          <p className="py-14 text-center text-[13px] text-muted">
+            {error ?? 'Unable to load settings.'}
+          </p>
+        ) : null}
+
+        {draft && tab === 'general' ? (
           <section className="mx-auto max-w-2xl rounded-xl border border-border bg-white p-5 sm:p-6">
             <h2 className="text-[15px] font-bold text-navy">General</h2>
             <p className="mt-0.5 text-[12px] text-muted">
@@ -90,14 +156,18 @@ export function SettingsPage() {
                 label="Platform name"
                 value={draft.general.platformName}
                 onChange={(v) =>
-                  setDraft((d) => ({ ...d, general: { ...d.general, platformName: v } }))
+                  setDraft((d) =>
+                    d ? { ...d, general: { ...d.general, platformName: v } } : d,
+                  )
                 }
               />
               <Field
                 label="Admin portal name"
                 value={draft.general.adminPortalName}
                 onChange={(v) =>
-                  setDraft((d) => ({ ...d, general: { ...d.general, adminPortalName: v } }))
+                  setDraft((d) =>
+                    d ? { ...d, general: { ...d.general, adminPortalName: v } } : d,
+                  )
                 }
               />
               <Field
@@ -105,21 +175,27 @@ export function SettingsPage() {
                 type="email"
                 value={draft.general.supportEmail}
                 onChange={(v) =>
-                  setDraft((d) => ({ ...d, general: { ...d.general, supportEmail: v } }))
+                  setDraft((d) =>
+                    d ? { ...d, general: { ...d.general, supportEmail: v } } : d,
+                  )
                 }
               />
               <Field
                 label="Default country"
                 value={draft.general.defaultCountry}
                 onChange={(v) =>
-                  setDraft((d) => ({ ...d, general: { ...d.general, defaultCountry: v } }))
+                  setDraft((d) =>
+                    d ? { ...d, general: { ...d.general, defaultCountry: v } } : d,
+                  )
                 }
               />
               <SelectField
                 label="Timezone"
                 value={draft.general.timezone}
                 onChange={(v) =>
-                  setDraft((d) => ({ ...d, general: { ...d.general, timezone: v } }))
+                  setDraft((d) =>
+                    d ? { ...d, general: { ...d.general, timezone: v } } : d,
+                  )
                 }
                 options={[
                   'Asia/Kuala_Lumpur',
@@ -132,7 +208,9 @@ export function SettingsPage() {
                 label="Date format"
                 value={draft.general.dateFormat}
                 onChange={(v) =>
-                  setDraft((d) => ({ ...d, general: { ...d.general, dateFormat: v } }))
+                  setDraft((d) =>
+                    d ? { ...d, general: { ...d.general, dateFormat: v } } : d,
+                  )
                 }
                 options={['DD MMM YYYY', 'YYYY-MM-DD', 'MM/DD/YYYY', 'DD/MM/YYYY']}
               />
@@ -140,21 +218,33 @@ export function SettingsPage() {
                 label="Language"
                 value={draft.general.language}
                 onChange={(v) =>
-                  setDraft((d) => ({ ...d, general: { ...d.general, language: v } }))
+                  setDraft((d) =>
+                    d ? { ...d, general: { ...d.general, language: v } } : d,
+                  )
                 }
                 options={['English', 'Bahasa Melayu', '中文']}
               />
             </div>
             <div className="mt-6 flex justify-end">
-              <SaveButton onClick={save} />
+              {canEdit ? <SaveButton onClick={() => void save()} disabled={saving} /> : null}
             </div>
           </section>
         ) : null}
 
         {tab === 'team' ? (
           <div className="mx-auto max-w-3xl space-y-4">
+            {rolesError ? (
+              <p className="text-[13px] text-action">{rolesError}</p>
+            ) : null}
+            {rolesLoading && roles.length === 0 ? (
+              <p className="py-14 text-center text-[13px] text-muted">Loading roles…</p>
+            ) : null}
+            {!rolesLoading && roles.length === 0 && !rolesError ? (
+              <p className="py-14 text-center text-[13px] text-muted">No roles found.</p>
+            ) : null}
             {ROLE_ORDER.map((roleName) => {
-              const matrix = matrices.find((m) => m.role === roleName)
+              const matrix = roles.find((m) => m.role === roleName)
+              if (!matrix) return null
               return (
                 <article
                   key={roleName}
@@ -164,10 +254,10 @@ export function SettingsPage() {
                     <div>
                       <h2 className="text-[15px] font-bold text-navy">{roleName}</h2>
                       <p className="mt-0.5 text-[12px] text-muted">
-                        {matrix?.description ?? ROLE_PERMISSION_BLURBS[roleName]}
+                        {matrix.description || ROLE_PERMISSION_BLURBS[roleName]}
                       </p>
                       <p className="mt-2 text-[12px] font-medium text-navy">
-                        {countUsersByRole(roleName)} users · {ROLE_PERMISSION_BLURBS[roleName]}
+                        {matrix.userCount ?? 0} users · {ROLE_PERMISSION_BLURBS[roleName]}
                       </p>
                     </div>
                     <button
@@ -184,7 +274,7 @@ export function SettingsPage() {
           </div>
         ) : null}
 
-        {tab === 'security' ? (
+        {draft && tab === 'security' ? (
           <section className="mx-auto max-w-2xl rounded-xl border border-border bg-white p-5 sm:p-6">
             <h2 className="text-[15px] font-bold text-navy">Security</h2>
             <p className="mt-0.5 text-[12px] text-muted">
@@ -198,13 +288,17 @@ export function SettingsPage() {
                 <select
                   value={draft.security.sessionTimeoutMinutes}
                   onChange={(e) =>
-                    setDraft((d) => ({
-                      ...d,
-                      security: {
-                        ...d.security,
-                        sessionTimeoutMinutes: Number(e.target.value),
-                      },
-                    }))
+                    setDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            security: {
+                              ...d.security,
+                              sessionTimeoutMinutes: Number(e.target.value),
+                            },
+                          }
+                        : d,
+                    )
                   }
                   className="h-9 rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none focus:border-navy focus:ring-2 focus:ring-navy/10"
                 >
@@ -220,10 +314,14 @@ export function SettingsPage() {
                 <Toggle
                   checked={draft.security.twoFactorEnabled}
                   onChange={(checked) =>
-                    setDraft((d) => ({
-                      ...d,
-                      security: { ...d.security, twoFactorEnabled: checked },
-                    }))
+                    setDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            security: { ...d.security, twoFactorEnabled: checked },
+                          }
+                        : d,
+                    )
                   }
                   label="Two-factor authentication"
                 />
@@ -235,13 +333,17 @@ export function SettingsPage() {
                 <select
                   value={draft.security.passwordMinLength}
                   onChange={(e) =>
-                    setDraft((d) => ({
-                      ...d,
-                      security: {
-                        ...d.security,
-                        passwordMinLength: Number(e.target.value),
-                      },
-                    }))
+                    setDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            security: {
+                              ...d.security,
+                              passwordMinLength: Number(e.target.value),
+                            },
+                          }
+                        : d,
+                    )
                   }
                   className="h-9 rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none focus:border-navy focus:ring-2 focus:ring-navy/10"
                 >
@@ -258,10 +360,14 @@ export function SettingsPage() {
                 <Toggle
                   checked={draft.security.requireStrongPassword}
                   onChange={(checked) =>
-                    setDraft((d) => ({
-                      ...d,
-                      security: { ...d.security, requireStrongPassword: checked },
-                    }))
+                    setDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            security: { ...d.security, requireStrongPassword: checked },
+                          }
+                        : d,
+                    )
                   }
                   label="Require strong password"
                 />
@@ -273,13 +379,17 @@ export function SettingsPage() {
                 <select
                   value={draft.security.lockoutAfterFailures}
                   onChange={(e) =>
-                    setDraft((d) => ({
-                      ...d,
-                      security: {
-                        ...d.security,
-                        lockoutAfterFailures: Number(e.target.value),
-                      },
-                    }))
+                    setDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            security: {
+                              ...d.security,
+                              lockoutAfterFailures: Number(e.target.value),
+                            },
+                          }
+                        : d,
+                    )
                   }
                   className="h-9 rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none focus:border-navy focus:ring-2 focus:ring-navy/10"
                 >
@@ -290,12 +400,12 @@ export function SettingsPage() {
               </SettingRow>
             </div>
             <div className="mt-6 flex justify-end">
-              <SaveButton onClick={save} />
+              {canEdit ? <SaveButton onClick={() => void save()} disabled={saving} /> : null}
             </div>
           </section>
         ) : null}
 
-        {tab === 'notifications' ? (
+        {draft && tab === 'notifications' ? (
           <section className="mx-auto max-w-2xl rounded-xl border border-border bg-white p-5 sm:p-6">
             <h2 className="text-[15px] font-bold text-navy">Notifications</h2>
             <p className="mt-0.5 text-[12px] text-muted">
@@ -309,10 +419,17 @@ export function SettingsPage() {
                 <Toggle
                   checked={draft.notifications.newAdminInvitation}
                   onChange={(checked) =>
-                    setDraft((d) => ({
-                      ...d,
-                      notifications: { ...d.notifications, newAdminInvitation: checked },
-                    }))
+                    setDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            notifications: {
+                              ...d.notifications,
+                              newAdminInvitation: checked,
+                            },
+                          }
+                        : d,
+                    )
                   }
                   label="New admin invitation"
                 />
@@ -324,10 +441,17 @@ export function SettingsPage() {
                 <Toggle
                   checked={draft.notifications.merchantApproval}
                   onChange={(checked) =>
-                    setDraft((d) => ({
-                      ...d,
-                      notifications: { ...d.notifications, merchantApproval: checked },
-                    }))
+                    setDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            notifications: {
+                              ...d.notifications,
+                              merchantApproval: checked,
+                            },
+                          }
+                        : d,
+                    )
                   }
                   label="Merchant approval"
                 />
@@ -339,10 +463,17 @@ export function SettingsPage() {
                 <Toggle
                   checked={draft.notifications.offerStatusChanges}
                   onChange={(checked) =>
-                    setDraft((d) => ({
-                      ...d,
-                      notifications: { ...d.notifications, offerStatusChanges: checked },
-                    }))
+                    setDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            notifications: {
+                              ...d.notifications,
+                              offerStatusChanges: checked,
+                            },
+                          }
+                        : d,
+                    )
                   }
                   label="Offer status changes"
                 />
@@ -354,10 +485,17 @@ export function SettingsPage() {
                 <Toggle
                   checked={draft.notifications.redemptionAlerts}
                   onChange={(checked) =>
-                    setDraft((d) => ({
-                      ...d,
-                      notifications: { ...d.notifications, redemptionAlerts: checked },
-                    }))
+                    setDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            notifications: {
+                              ...d.notifications,
+                              redemptionAlerts: checked,
+                            },
+                          }
+                        : d,
+                    )
                   }
                   label="Redemption alerts"
                 />
@@ -369,17 +507,24 @@ export function SettingsPage() {
                 <Toggle
                   checked={draft.notifications.systemNotifications}
                   onChange={(checked) =>
-                    setDraft((d) => ({
-                      ...d,
-                      notifications: { ...d.notifications, systemNotifications: checked },
-                    }))
+                    setDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            notifications: {
+                              ...d.notifications,
+                              systemNotifications: checked,
+                            },
+                          }
+                        : d,
+                    )
                   }
                   label="System notifications"
                 />
               </SettingRow>
             </div>
             <div className="mt-6 flex justify-end">
-              <SaveButton onClick={save} />
+              {canEdit ? <SaveButton onClick={() => void save()} disabled={saving} /> : null}
             </div>
           </section>
         ) : null}
@@ -507,12 +652,19 @@ function Toggle({
   )
 }
 
-function SaveButton({ onClick }: { onClick: () => void }) {
+function SaveButton({
+  onClick,
+  disabled = false,
+}: {
+  onClick: () => void
+  disabled?: boolean
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary"
+      disabled={disabled}
+      className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary disabled:opacity-60"
     >
       Save changes
     </button>

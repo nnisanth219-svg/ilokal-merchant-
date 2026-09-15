@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AdminUserStatusBadge } from '../components/adminUsers/AdminUserStatusBadge'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
@@ -18,17 +18,24 @@ import {
   ViewportAwareMenu,
   type ViewportMenuItem,
 } from '../components/ui/ViewportAwareMenu'
-import { ADMIN_USERS_SUMMARY } from '../data/adminUsers'
+import { useAuth } from '../context/AuthContext'
 import {
-  bulkDeleteAdminUsers,
-  bulkSetAdminUserStatus,
-  countUsersByRole,
-  deleteAdminUser,
-  getAdminUsers,
-  getRoleMatrices,
-  setAdminUserStatus,
-  subscribeAdminUsers,
-} from '../services/adminUserStore'
+  canCreateInModule,
+  canDeleteInModule,
+  canEditInModule,
+  canManageInModule,
+} from '../types/auth'
+import {
+  bulkSoftDeleteAdminUsersApi,
+  bulkUpdateAdminUserStatusApi,
+  listAdminRolesApi,
+  listAdminUsersApi,
+  restoreAdminUserApi,
+  softDeleteAdminUserApi,
+  updateAdminUserStatusApi,
+  updateRolePermissionsApi,
+  type AdminUserListResponse,
+} from '../services/adminUserApi'
 import {
   ADMIN_ROLE_FILTERS,
   ADMIN_STATUS_FILTERS,
@@ -59,9 +66,30 @@ function actionLabel(action: PermissionAction): string {
 
 export function AdminUsersPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const canCreate = canCreateInModule(user, 'Admin Users')
+  const canEdit = canEditInModule(user, 'Admin Users')
+  const canDelete = canDeleteInModule(user, 'Admin Users')
+  const canManage = canManageInModule(user, 'Admin Users')
+  const canMutate = canEdit || canDelete
   const [tab, setTab] = useState<PageTab>('users')
-  const [items, setItems] = useState(getAdminUsers)
+  const [items, setItems] = useState<AdminUser[]>([])
+  const [summary, setSummary] = useState<AdminUserListResponse['summary']>({
+    total: 0,
+    active: 0,
+    pending: 0,
+    inactive: 0,
+  })
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: CMS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [role, setRole] = useState<RoleFilter>('all')
   const [page, setPage] = useState(1)
@@ -69,38 +97,77 @@ export function AdminUsersPage() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
   const [confirm, setConfirm] = useState<{
-    type: 'deactivate' | 'delete'
+    type: 'deactivate' | 'delete' | 'restore'
     item: AdminUser
   } | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState<'activate' | 'deactivate' | 'delete' | null>(
     null,
   )
-  const [matrices, setMatrices] = useState<RolePermissionMatrix[]>(() =>
-    structuredClone(getRoleMatrices()),
-  )
+  const [matrices, setMatrices] = useState<RolePermissionMatrix[]>([])
+  const [rolesLoading, setRolesLoading] = useState(false)
+  const [rolesError, setRolesError] = useState<string | null>(null)
 
-  useEffect(() => subscribeAdminUsers(() => setItems(getAdminUsers())), [])
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
-  const filtered = useMemo(() => {
-    return items.filter((u) => {
-      if (status !== 'all' && u.status !== status) return false
-      if (role !== 'all' && u.role !== role) return false
-      if (search.trim()) {
-        const q = search.toLowerCase()
-        if (!`${u.fullName} ${u.email}`.toLowerCase().includes(q)) return false
-      }
-      return true
-    })
-  }, [items, status, role, search])
+  const loadUsers = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await listAdminUsersApi({
+        page,
+        pageSize: CMS_PAGE_SIZE,
+        search: debouncedSearch,
+        status,
+        role,
+        includeDeleted: status === 'deleted',
+      })
+      setItems(data.users)
+      setSummary(data.summary)
+      setPagination(data.pagination)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load admin users')
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
+  }, [page, debouncedSearch, status, role])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / CMS_PAGE_SIZE))
+  useEffect(() => {
+    void loadUsers()
+  }, [loadUsers])
+
+  useEffect(() => {
+    if (tab !== 'roles') return
+    let cancelled = false
+    setRolesLoading(true)
+    setRolesError(null)
+    listAdminRolesApi()
+      .then((data) => {
+        if (!cancelled) setMatrices(data)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setMatrices([])
+          setRolesError(err instanceof Error ? err.message : 'Unable to load roles')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRolesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [tab])
+
+  const pageItems = items
+  const totalPages = Math.max(1, pagination.totalPages)
   const currentPage = Math.min(page, totalPages)
-  const pageItems = filtered.slice(
-    (currentPage - 1) * CMS_PAGE_SIZE,
-    currentPage * CMS_PAGE_SIZE,
-  )
-  const rangeStart = filtered.length === 0 ? 0 : (currentPage - 1) * CMS_PAGE_SIZE + 1
-  const rangeEnd = Math.min(currentPage * CMS_PAGE_SIZE, filtered.length)
+  const total = pagination.total
+  const rangeStart = total === 0 ? 0 : (currentPage - 1) * CMS_PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * CMS_PAGE_SIZE, total)
   const allPageSelected =
     pageItems.length > 0 && pageItems.every((u) => selectedIds.includes(u.id))
   const pageNumbers = useMemo(
@@ -117,28 +184,53 @@ export function AdminUsersPage() {
           label: 'View',
           onClick: () => navigate(`/admin-users/${activeItem.id}`),
         },
-        {
-          id: 'edit',
-          label: 'Edit',
-          onClick: () => navigate(`/admin-users/${activeItem.id}`),
-        },
-        {
-          id: 'role',
-          label: 'Change role',
-          onClick: () => navigate(`/admin-users/${activeItem.id}`),
-        },
-        {
-          id: 'deactivate',
-          label: 'Deactivate',
-          onClick: () => setConfirm({ type: 'deactivate', item: activeItem }),
-        },
-        {
-          id: 'delete',
-          label: 'Delete',
-          destructive: true,
-          dividerBefore: true,
-          onClick: () => setConfirm({ type: 'delete', item: activeItem }),
-        },
+        ...(canEdit
+          ? [
+              {
+                id: 'edit',
+                label: 'Edit',
+                onClick: () => navigate(`/admin-users/${activeItem.id}`),
+              },
+              {
+                id: 'role',
+                label: 'Change role',
+                onClick: () => navigate(`/admin-users/${activeItem.id}`),
+              },
+            ]
+          : []),
+        ...(activeItem.status === 'deleted'
+          ? canDelete
+            ? [
+                {
+                  id: 'restore',
+                  label: 'Restore',
+                  onClick: () => setConfirm({ type: 'restore' as const, item: activeItem }),
+                },
+              ]
+            : []
+          : [
+              ...(canEdit
+                ? [
+                    {
+                      id: 'deactivate',
+                      label: 'Deactivate',
+                      onClick: () =>
+                        setConfirm({ type: 'deactivate' as const, item: activeItem }),
+                    },
+                  ]
+                : []),
+              ...(canDelete
+                ? [
+                    {
+                      id: 'delete',
+                      label: 'Delete',
+                      destructive: true,
+                      dividerBefore: true,
+                      onClick: () => setConfirm({ type: 'delete' as const, item: activeItem }),
+                    },
+                  ]
+                : []),
+            ]),
       ]
     : []
 
@@ -173,44 +265,82 @@ export function AdminUsersPage() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
-  function handleConfirm(): void {
+  async function handleConfirm(): Promise<void> {
     if (!confirm) return
-    if (confirm.type === 'deactivate') setAdminUserStatus(confirm.item.id, 'inactive')
-    if (confirm.type === 'delete') deleteAdminUser(confirm.item.id)
-    setConfirm(null)
-    closeMenu()
+    try {
+      setError(null)
+      if (confirm.type === 'deactivate') {
+        await updateAdminUserStatusApi(confirm.item.id, 'inactive')
+      }
+      if (confirm.type === 'delete') await softDeleteAdminUserApi(confirm.item.id)
+      if (confirm.type === 'restore') await restoreAdminUserApi(confirm.item.id)
+      setConfirm(null)
+      closeMenu()
+      await loadUsers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update admin user')
+      setConfirm(null)
+      closeMenu()
+    }
   }
 
-  function runBulk(action: 'activate' | 'deactivate' | 'delete'): void {
-    if (action === 'activate') bulkSetAdminUserStatus(selectedIds, 'active')
-    if (action === 'deactivate') bulkSetAdminUserStatus(selectedIds, 'inactive')
-    if (action === 'delete') bulkDeleteAdminUsers(selectedIds)
-    setSelectedIds([])
-    setBulkConfirm(null)
+  async function runBulk(action: 'activate' | 'deactivate' | 'delete'): Promise<void> {
+    try {
+      setError(null)
+      if (action === 'activate') await bulkUpdateAdminUserStatusApi(selectedIds, 'active')
+      if (action === 'deactivate') await bulkUpdateAdminUserStatusApi(selectedIds, 'inactive')
+      if (action === 'delete') await bulkSoftDeleteAdminUsersApi(selectedIds)
+      setSelectedIds([])
+      setBulkConfirm(null)
+      await loadUsers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update admin users')
+      setBulkConfirm(null)
+    }
   }
 
-  function togglePermission(
+  async function togglePermission(
     roleName: AdminRole,
     module: PermissionModule,
     action: PermissionAction,
-  ): void {
+  ): Promise<void> {
+    const current = matrices.find((m) => m.role === roleName)
+    if (!current) return
+    if (current.role === 'Super Admin' || current.roleCode === 'SUPER_ADMIN') {
+      setError('Super Admin permissions cannot be modified.')
+      return
+    }
+
+    const currentActions = current.permissions[module] ?? []
+    const has = currentActions.includes(action)
+    const nextActions = has
+      ? currentActions.filter((a) => a !== action)
+      : [...currentActions, action]
+    const nextPermissions = {
+      ...current.permissions,
+      [module]: nextActions,
+    }
+
     setMatrices((prev) =>
-      prev.map((matrix) => {
-        if (matrix.role !== roleName) return matrix
-        const current = matrix.permissions[module] ?? []
-        const has = current.includes(action)
-        const nextActions = has
-          ? current.filter((a) => a !== action)
-          : [...current, action]
-        return {
-          ...matrix,
-          permissions: {
-            ...matrix.permissions,
-            [module]: nextActions,
-          },
-        }
-      }),
+      prev.map((matrix) =>
+        matrix.role === roleName ? { ...matrix, permissions: nextPermissions } : matrix,
+      ),
     )
+
+    try {
+      const roleCode =
+        current.roleCode ??
+        (roleName === 'Admin' ? 'ADMIN' : roleName === 'Operations' ? 'OPERATIONS' : 'SUPER_ADMIN')
+      const saved = await updateRolePermissionsApi(roleCode, nextPermissions)
+      setMatrices((prev) =>
+        prev.map((matrix) => (matrix.role === roleName ? { ...matrix, ...saved } : matrix)),
+      )
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to save role permissions')
+      const refreshed = await listAdminRolesApi()
+      setMatrices(refreshed)
+    }
   }
 
   return (
@@ -222,13 +352,16 @@ export function AdminUsersPage() {
             <p className="mt-0.5 text-[12px] text-muted">
               Manage administrator accounts, roles and permissions.
             </p>
+            {error ? <p className="mt-1 text-[12px] text-action">{error}</p> : null}
           </div>
-          <Link
-            to="/admin-users/invite"
-            className="inline-flex h-[38px] min-h-[38px] w-full items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white transition hover:bg-navy-secondary sm:w-auto"
-          >
-            + Invite admin
-          </Link>
+          {canCreate ? (
+            <Link
+              to="/admin-users/invite"
+              className="inline-flex h-[38px] min-h-[38px] w-full items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white transition hover:bg-navy-secondary sm:w-auto"
+            >
+              + Invite admin
+            </Link>
+          ) : null}
         </div>
 
         <div className="mt-4 flex flex-wrap gap-1 border-b border-border">
@@ -244,10 +377,10 @@ export function AdminUsersPage() {
       {tab === 'users' ? (
         <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
           <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
-            <SummaryCard label="Total admins" value={String(ADMIN_USERS_SUMMARY.total)} />
-            <SummaryCard label="Active" value={String(ADMIN_USERS_SUMMARY.active)} />
-            <SummaryCard label="Pending" value={String(ADMIN_USERS_SUMMARY.pending)} />
-            <SummaryCard label="Inactive" value={String(ADMIN_USERS_SUMMARY.inactive)} />
+            <SummaryCard label="Total admins" value={String(summary.total)} />
+            <SummaryCard label="Active" value={String(summary.active)} />
+            <SummaryCard label="Pending" value={String(summary.pending)} />
+            <SummaryCard label="Inactive" value={String(summary.inactive)} />
           </div>
 
           <div className="mb-4 flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -300,21 +433,27 @@ export function AdminUsersPage() {
             </div>
           </div>
 
-          {selectedIds.length > 0 ? (
+          {selectedIds.length > 0 && canMutate ? (
             <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3 rounded-xl bg-navy px-4 py-3">
               <span className="text-[13px] font-semibold text-white">
                 {selectedIds.length} selected
               </span>
               <span className="text-[12px] font-medium text-white/55">Bulk:</span>
-              <BulkBtn label="Activate" onClick={() => setBulkConfirm('activate')} />
-              <BulkBtn label="Deactivate" onClick={() => setBulkConfirm('deactivate')} />
-              <button
-                type="button"
-                onClick={() => setBulkConfirm('delete')}
-                className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
-              >
-                Delete
-              </button>
+              {canEdit ? (
+                <>
+                  <BulkBtn label="Activate" onClick={() => setBulkConfirm('activate')} />
+                  <BulkBtn label="Deactivate" onClick={() => setBulkConfirm('deactivate')} />
+                </>
+              ) : null}
+              {canDelete ? (
+                <button
+                  type="button"
+                  onClick={() => setBulkConfirm('delete')}
+                  className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-action px-3 text-[12px] font-semibold text-white hover:bg-[#c82027]"
+                >
+                  Delete
+                </button>
+              ) : null}
             </div>
           ) : null}
 
@@ -343,6 +482,13 @@ export function AdminUsersPage() {
                     </tr>
                   </thead>
                   <tbody>
+                    {loading && pageItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-14 text-center text-[13px] text-muted">
+                          Loading admin users…
+                        </td>
+                      </tr>
+                    ) : null}
                     {pageItems.map((row) => {
                       const selected = selectedIds.includes(row.id)
                       return (
@@ -351,7 +497,9 @@ export function AdminUsersPage() {
                           className={[
                             'border-b border-border last:border-b-0',
                             selected ? 'bg-[#F7F9FC]' : 'bg-white hover:bg-[#FAFAF8]',
-                            row.status === 'inactive' ? 'opacity-70' : '',
+                            row.status === 'inactive' || row.status === 'deleted'
+                              ? 'opacity-70'
+                              : '',
                           ].join(' ')}
                         >
                           <td className="px-4 py-3.5 align-middle">
@@ -402,7 +550,7 @@ export function AdminUsersPage() {
                         </tr>
                       )
                     })}
-                    {pageItems.length === 0 ? (
+                    {!loading && pageItems.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-4 py-14 text-center text-[13px] text-muted">
                           No admin users match your filters.
@@ -416,7 +564,7 @@ export function AdminUsersPage() {
 
             <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-[12px] text-muted">
-                Showing {rangeStart}–{rangeEnd} of {filtered.length}
+                Showing {rangeStart}–{rangeEnd} of {total}
               </p>
               <div className="flex flex-wrap items-center gap-1">
                 <PagerButton
@@ -443,6 +591,15 @@ export function AdminUsersPage() {
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+          {rolesError ? (
+            <p className="mb-4 text-[13px] font-medium text-action">{rolesError}</p>
+          ) : null}
+          {rolesLoading && matrices.length === 0 ? (
+            <p className="py-14 text-center text-[13px] text-muted">Loading roles…</p>
+          ) : null}
+          {!rolesLoading && matrices.length === 0 && !rolesError ? (
+            <p className="py-14 text-center text-[13px] text-muted">No roles available.</p>
+          ) : null}
           <div className="space-y-4">
             {matrices.map((matrix) => (
               <article
@@ -456,7 +613,7 @@ export function AdminUsersPage() {
                       <p className="mt-0.5 text-[12px] text-muted">{matrix.description}</p>
                     </div>
                     <p className="shrink-0 text-[12px] font-semibold text-navy">
-                      {countUsersByRole(matrix.role)} users
+                      {matrix.userCount ?? 0} users
                     </p>
                   </div>
                 </div>
@@ -487,11 +644,16 @@ export function AdminUsersPage() {
                                 <input
                                   type="checkbox"
                                   checked={checked}
-                                  onChange={() =>
-                                    togglePermission(matrix.role, module, action)
+                                  disabled={
+                                    !canManage ||
+                                    matrix.role === 'Super Admin' ||
+                                    matrix.roleCode === 'SUPER_ADMIN'
                                   }
+                                  onChange={() => {
+                                    void togglePermission(matrix.role, module, action)
+                                  }}
                                   aria-label={`${matrix.role} ${module} ${action}`}
-                                  className="h-[14px] w-[14px] accent-navy"
+                                  className="h-[14px] w-[14px] accent-navy disabled:opacity-60"
                                 />
                               </td>
                             )
@@ -524,45 +686,57 @@ export function AdminUsersPage() {
         }
         confirmLabel="Deactivate"
         onCancel={() => setConfirm(null)}
-        onConfirm={handleConfirm}
+        onConfirm={() => void handleConfirm()}
       />
       <ConfirmDialog
         open={confirm?.type === 'delete'}
         title="Delete admin?"
         message={
           confirm
-            ? `Permanently delete “${confirm.item.fullName}”? This cannot be undone.`
+            ? `Remove “${confirm.item.fullName}” from the active admin list? You can restore them later.`
             : ''
         }
         confirmLabel="Delete admin"
         destructive
         onCancel={() => setConfirm(null)}
-        onConfirm={handleConfirm}
+        onConfirm={() => void handleConfirm()}
+      />
+      <ConfirmDialog
+        open={confirm?.type === 'restore'}
+        title="Restore admin?"
+        message={
+          confirm
+            ? `Restore “${confirm.item.fullName}” to the admin list? They will return as inactive.`
+            : ''
+        }
+        confirmLabel="Restore"
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void handleConfirm()}
       />
       <ConfirmDialog
         open={bulkConfirm === 'activate'}
         title="Bulk activate"
-        message={`Activate ${selectedIds.length} admin users? Frontend only.`}
+        message={`Activate ${selectedIds.length} admin users?`}
         confirmLabel="Activate"
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('activate')}
+        onConfirm={() => void runBulk('activate')}
       />
       <ConfirmDialog
         open={bulkConfirm === 'deactivate'}
         title="Bulk deactivate"
-        message={`Deactivate ${selectedIds.length} admin users? Frontend only.`}
+        message={`Deactivate ${selectedIds.length} admin users?`}
         confirmLabel="Deactivate"
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('deactivate')}
+        onConfirm={() => void runBulk('deactivate')}
       />
       <ConfirmDialog
         open={bulkConfirm === 'delete'}
         title="Bulk delete"
-        message={`Delete ${selectedIds.length} admin users? Frontend only.`}
+        message={`Remove ${selectedIds.length} admin users from the active list? You can restore them later.`}
         confirmLabel="Delete"
         destructive
         onCancel={() => setBulkConfirm(null)}
-        onConfirm={() => runBulk('delete')}
+        onConfirm={() => void runBulk('delete')}
       />
     </div>
   )

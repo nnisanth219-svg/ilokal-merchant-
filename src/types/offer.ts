@@ -1,4 +1,4 @@
-export type OfferStatus = 'live' | 'scheduled' | 'draft' | 'expired' | 'paused'
+export type OfferStatus = 'live' | 'scheduled' | 'draft' | 'expired' | 'paused' | 'deleted'
 
 export type OfferType =
   | 'percentage'
@@ -6,12 +6,17 @@ export type OfferType =
   | 'free_item'
   | 'set_price'
   | 'other'
+  | 'bogo'
+  | 'free_gift'
+  | 'member_pricing'
+  | 'voucher'
 
 export interface Offer {
   id: string
   offerCode: string
   title: string
   description: string
+  termsAndConditions?: string
   merchantId: string
   merchantName: string
   category: string
@@ -22,11 +27,16 @@ export interface Offer {
   validFrom: string
   validTo: string
   validityLabel: string
+  redemptionInstructions?: string
   redemptionLimit: string
+  maxRedemptions?: number | null
+  maxRedemptionsPerMember?: number | null
+  imageUrl?: string | null
   redeemedCount: number
   status: OfferStatus
   createdAt: string
   updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface OfferFormValues {

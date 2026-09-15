@@ -1,21 +1,26 @@
-import { useState, type InputHTMLAttributes } from 'react'
+import { useEffect, useState, type InputHTMLAttributes } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { listOfferMerchantsApi, type OfferMerchantOption } from '../../services/offerApi'
 import type { Offer, OfferFormErrors, OfferFormValues, OfferStatus, OfferType } from '../../types/offer'
 
-const MERCHANT_OPTIONS = [
-  { id: 'm-0148', name: 'Kedai Kopi Seri Wangi' },
-  { id: 'm-0203', name: 'Batik Warisan Gallery' },
-  { id: 'm-0217', name: 'Ipoh White Coffee Co.' },
-  { id: 'm-0091', name: 'Melaka Nyonya Kitchen' },
-  { id: 'm-0176', name: 'JB Sports Hub' },
-] as const
+const OFFER_TYPE_OPTIONS: { value: OfferType; label: string }[] = [
+  { value: 'percentage', label: 'Percentage discount' },
+  { value: 'fixed', label: 'Fixed discount' },
+  { value: 'free_item', label: 'Free item' },
+  { value: 'set_price', label: 'Set price' },
+  { value: 'bogo', label: 'Buy one get one free' },
+  { value: 'free_gift', label: 'Free gift' },
+  { value: 'member_pricing', label: 'Member pricing' },
+  { value: 'voucher', label: 'Voucher' },
+  { value: 'other', label: 'Other' },
+]
 
 interface OfferFormProps {
   mode: 'create' | 'edit'
   initialValues: OfferFormValues
   offer?: Offer
-  onSubmit: (values: OfferFormValues) => void
-  onSaveDraft?: (values: OfferFormValues) => void
+  onSubmit: (values: OfferFormValues) => void | Promise<void>
+  onSaveDraft?: (values: OfferFormValues) => void | Promise<void>
 }
 
 export function OfferForm({
@@ -28,6 +33,26 @@ export function OfferForm({
   const navigate = useNavigate()
   const [values, setValues] = useState<OfferFormValues>(initialValues)
   const [errors, setErrors] = useState<OfferFormErrors>({})
+  const [merchants, setMerchants] = useState<OfferMerchantOption[]>([])
+  const [merchantsError, setMerchantsError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    listOfferMerchantsApi()
+      .then((data) => {
+        if (!cancelled) setMerchants(data)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setMerchants([])
+          setMerchantsError(err instanceof Error ? err.message : 'Unable to load merchants')
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function updateField<K extends keyof OfferFormValues>(
     key: K,
@@ -47,20 +72,35 @@ export function OfferForm({
     return next
   }
 
-  function handleSubmit(): void {
+  async function handleSubmit(): Promise<void> {
     const next = validate()
     setErrors(next)
     if (Object.keys(next).length > 0) return
-    onSubmit(values)
+    setSubmitting(true)
+    try {
+      await onSubmit(values)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  function handleDraft(): void {
-    if (onSaveDraft) {
-      onSaveDraft({ ...values, status: 'draft' })
-      return
+  async function handleDraft(): Promise<void> {
+    setSubmitting(true)
+    try {
+      if (onSaveDraft) {
+        await onSaveDraft({ ...values, status: 'draft' })
+        return
+      }
+      await onSubmit({ ...values, status: 'draft' })
+    } finally {
+      setSubmitting(false)
     }
-    onSubmit({ ...values, status: 'draft' })
   }
+
+  const merchantOptions =
+    values.merchantId && !merchants.some((m) => m.id === values.merchantId)
+      ? [{ id: values.merchantId, name: offer?.merchantName ?? values.merchantId, category: '' }, ...merchants]
+      : merchants
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -89,15 +129,17 @@ export function OfferForm({
           </button>
           <button
             type="button"
-            onClick={handleDraft}
-            className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
+            disabled={submitting}
+            onClick={() => void handleDraft()}
+            className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none disabled:opacity-50"
           >
             Save draft
           </button>
           <button
             type="button"
-            onClick={handleSubmit}
-            className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
+            disabled={submitting}
+            onClick={() => void handleSubmit()}
+            className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto disabled:opacity-50"
           >
             {mode === 'create' ? 'Create offer' : 'Save changes'}
           </button>
@@ -106,6 +148,9 @@ export function OfferForm({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
         <div className="mx-auto max-w-3xl space-y-4">
+          {merchantsError ? (
+            <p className="text-[12px] text-action">{merchantsError}</p>
+          ) : null}
           <section className="rounded-xl border border-border bg-white p-5">
             <h2 className="text-[15px] font-bold text-navy">Offer details</h2>
             <div className="mt-4 space-y-4">
@@ -116,7 +161,8 @@ export function OfferForm({
                   onChange={(e) => updateField('merchantId', e.target.value)}
                   className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none focus:border-navy focus:ring-2 focus:ring-navy/10"
                 >
-                  {MERCHANT_OPTIONS.map((m) => (
+                  <option value="">Select merchant</option>
+                  {merchantOptions.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name}
                     </option>
@@ -155,11 +201,11 @@ export function OfferForm({
                     onChange={(e) => updateField('offerType', e.target.value as OfferType)}
                     className="h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none focus:border-navy focus:ring-2 focus:ring-navy/10"
                   >
-                    <option value="percentage">Percentage discount</option>
-                    <option value="fixed">Fixed discount</option>
-                    <option value="free_item">Free item</option>
-                    <option value="set_price">Set price</option>
-                    <option value="other">Other</option>
+                    {OFFER_TYPE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>

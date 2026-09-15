@@ -1,5 +1,5 @@
 export type AdminRole = 'Super Admin' | 'Admin' | 'Operations'
-export type AdminUserStatus = 'active' | 'pending' | 'inactive'
+export type AdminUserStatus = 'active' | 'pending' | 'inactive' | 'deleted'
 
 export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'manage'
 
@@ -24,12 +24,20 @@ export interface AdminUser {
   status: AdminUserStatus
   lastActiveLabel: string
   createdAt: string
+  updatedAt?: string
+  invitedAt?: string | null
+  lastLoginAt?: string | null
+  deletedAt?: string | null
+  roleCode?: string
 }
 
 export interface RolePermissionMatrix {
   role: AdminRole
   description: string
   permissions: Record<PermissionModule, PermissionAction[]>
+  roleCode?: string
+  userCount?: number
+  isCustom?: boolean
 }
 
 export const ADMIN_ROLE_OPTIONS: AdminRole[] = ['Super Admin', 'Admin', 'Operations']
@@ -39,6 +47,7 @@ export const ADMIN_STATUS_FILTERS: { value: AdminUserStatus | 'all'; label: stri
   { value: 'active', label: 'Active' },
   { value: 'pending', label: 'Pending' },
   { value: 'inactive', label: 'Inactive' },
+  { value: 'deleted', label: 'Deleted' },
 ]
 
 export const ADMIN_ROLE_FILTERS: { value: AdminRole | 'all'; label: string }[] = [
