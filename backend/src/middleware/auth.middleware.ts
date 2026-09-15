@@ -13,15 +13,30 @@ declare global {
   }
 }
 
+function readAccessToken(req: Request): string | null {
+  const cookieToken = req.cookies?.[env.cookieName]
+  if (typeof cookieToken === 'string' && cookieToken.trim()) {
+    return cookieToken.trim()
+  }
+
+  const header = req.headers.authorization
+  if (typeof header === 'string' && header.toLowerCase().startsWith('bearer ')) {
+    const token = header.slice(7).trim()
+    if (token) return token
+  }
+
+  return null
+}
+
 export async function requireAuth(
   req: Request,
   _res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    const token = req.cookies?.[env.cookieName]
+    const token = readAccessToken(req)
 
-    if (typeof token !== 'string' || !token) {
+    if (!token) {
       throw new AppError(401, 'Unauthenticated')
     }
 

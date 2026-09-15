@@ -5,7 +5,7 @@ import type {
   DashboardChartData,
   DashboardStats,
 } from '../types/dashboard'
-import { requireApiBaseUrl } from './apiConfig'
+import { apiFetch, requireApiBaseUrl } from './apiConfig'
 
 async function parseJson(response: Response): Promise<unknown> {
   try {
@@ -28,9 +28,8 @@ function getErrorMessage(payload: unknown, fallback: string): string {
 }
 
 async function getDashboardResource<T>(path: string, fallbackError: string): Promise<T> {
-  const response = await fetch(`${requireApiBaseUrl()}${path}`, {
+  const response = await apiFetch(`${requireApiBaseUrl()}${path}`, {
     method: 'GET',
-    credentials: 'include',
   })
 
   const payload = await parseJson(response)

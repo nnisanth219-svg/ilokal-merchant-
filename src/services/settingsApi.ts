@@ -1,5 +1,5 @@
 import type { AppSettingsState, SettingKey } from '../types/settings'
-import { requireApiBaseUrl } from './apiConfig'
+import { apiFetch, requireApiBaseUrl } from './apiConfig'
 
 interface ApiSuccess<T> {
   success: true
@@ -37,7 +37,7 @@ async function request<T>(
   init: RequestInit,
   fallbackError: string,
 ): Promise<T> {
-  const response = await fetch(`${requireApiBaseUrl()}${path}`, {
+  const response = await apiFetch(`${requireApiBaseUrl()}${path}`, {
     ...init,
     credentials: 'include',
     headers: {

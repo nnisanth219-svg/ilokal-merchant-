@@ -1,5 +1,6 @@
 import type { AuthSuccessResponse, AuthUser } from '../types/auth'
-import { getApiBaseUrl, requireApiBaseUrl } from './apiConfig'
+import { apiFetch, getApiBaseUrl, requireApiBaseUrl } from './apiConfig'
+import { clearAuthToken, setAuthToken } from './authToken'
 
 async function parseJson(response: Response): Promise<unknown> {
   try {
@@ -23,12 +24,11 @@ function getErrorMessage(payload: unknown, fallback: string): string {
 
 export async function loginRequest(email: string, password: string): Promise<AuthUser> {
   const apiUrl = requireApiBaseUrl()
-  const response = await fetch(`${apiUrl}/api/auth/login`, {
+  const response = await apiFetch(`${apiUrl}/api/auth/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    credentials: 'include',
     body: JSON.stringify({ email, password }),
   })
 
@@ -43,6 +43,10 @@ export async function loginRequest(email: string, password: string): Promise<Aut
     throw new Error('Unexpected login response')
   }
 
+  if (typeof data.token === 'string' && data.token) {
+    setAuthToken(data.token)
+  }
+
   return data.user
 }
 
@@ -53,12 +57,12 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
   }
 
   try {
-    const response = await fetch(`${apiUrl}/api/auth/me`, {
+    const response = await apiFetch(`${apiUrl}/api/auth/me`, {
       method: 'GET',
-      credentials: 'include',
     })
 
     if (response.status === 401) {
+      clearAuthToken()
       return null
     }
 
@@ -78,15 +82,17 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
 export async function logoutRequest(): Promise<void> {
   const apiUrl = getApiBaseUrl()
   if (!apiUrl) {
+    clearAuthToken()
     return
   }
 
   try {
-    await fetch(`${apiUrl}/api/auth/logout`, {
+    await apiFetch(`${apiUrl}/api/auth/logout`, {
       method: 'POST',
-      credentials: 'include',
     })
   } catch {
     // Client session is cleared even if the API is unreachable.
+  } finally {
+    clearAuthToken()
   }
 }

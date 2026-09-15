@@ -30,6 +30,7 @@ export interface ApiSuccessResponse<T> {
   message?: string
   data?: T
   user?: AuthUser
+  token?: string
 }
 
 export interface ApiErrorResponse {

@@ -16,6 +16,7 @@ export interface AuthSuccessResponse {
   success: true
   message?: string
   user: AuthUser
+  token?: string
 }
 
 export interface AuthErrorResponse {

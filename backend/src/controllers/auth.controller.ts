@@ -33,6 +33,7 @@ export async function login(
       success: true,
       message: 'Login successful',
       user: result.user,
+      token: result.token,
     })
   } catch (error) {
     next(error)

@@ -1,8 +1,25 @@
+import { getAuthToken } from './authToken'
+
 /** Public API origin. Empty when VITE_API_URL was not set at build time. */
 export function getApiBaseUrl(): string {
   const raw = import.meta.env.VITE_API_URL
   if (typeof raw !== 'string') return ''
   return raw.trim().replace(/\/+$/, '')
+}
+
+/** Cookie + Bearer session fetch for every authenticated API call. */
+export function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers)
+  const token = getAuthToken()
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  return fetch(input, {
+    ...init,
+    credentials: 'include',
+    headers,
+  })
 }
 
 export function isApiConfigured(): boolean {
