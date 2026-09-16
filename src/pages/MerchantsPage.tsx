@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { ColumnPicker } from '../components/cms/ColumnPicker'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { MerchantStatusBadge } from '../components/merchants/MerchantStatusBadge'
 import {
@@ -8,16 +9,20 @@ import {
   type ViewportMenuItem,
 } from '../components/ui/ViewportAwareMenu'
 import { useAuth } from '../context/AuthContext'
+import { useColumnVisibility } from '../hooks/useColumnVisibility'
 import { MERCHANT_CATEGORIES, MALAYSIA_STATES } from '../data/merchants'
 import {
   bulkChangeMerchantCategoryApi,
   bulkSoftDeleteMerchantsApi,
   bulkUpdateMerchantStatusApi,
+  importMerchantsCsvApi,
   listMerchantsApi,
   restoreMerchantApi,
   softDeleteMerchantApi,
   updateMerchantStatusApi,
 } from '../services/merchantApi'
+import { downloadCsv, parseCsv } from '../utils/csv'
+import { collectAllPages } from '../utils/paginate'
 import {
   canCreateInModule,
   canDeleteInModule,
@@ -29,6 +34,7 @@ const PAGE_SIZE = 25
 
 type StatusFilter = MerchantStatus | 'all'
 type AddedFilter = 'any' | '7d' | '30d' | '90d'
+type MerchantColumn = 'category' | 'location' | 'offers' | 'redeemed' | 'status'
 
 function SearchIcon() {
   return (
@@ -49,6 +55,7 @@ function ChevronDown() {
 
 export function MerchantsPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const canEdit = canEditInModule(user, 'Merchants')
   const canDelete = canDeleteInModule(user, 'Merchants')
@@ -67,7 +74,7 @@ export function MerchantsPage() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
-  const [category, setCategory] = useState('All')
+  const [category, setCategory] = useState(() => searchParams.get('category') || 'All')
   const [state, setState] = useState('All')
   const [added, setAdded] = useState<AddedFilter>('any')
   const [includeDeleted, setIncludeDeleted] = useState(false)
@@ -79,12 +86,31 @@ export function MerchantsPage() {
     type: 'activate' | 'deactivate' | 'delete' | 'restore'
     merchant: Merchant
   } | null>(null)
-  const [bulkConfirm, setBulkConfirm] = useState<'activate' | 'deactivate' | 'delete' | null>(null)
+  const [bulkConfirm, setBulkConfirm] = useState<'activate' | 'deactivate' | 'delete' | 'category' | null>(null)
+  const [bulkCategory, setBulkCategory] = useState<string>(MERCHANT_CATEGORIES[0])
+  const [busyAction, setBusyAction] = useState<string | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
+  const { visible, setColumnVisible } = useColumnVisibility<MerchantColumn>(
+    'ilokal.columns.merchants',
+    {
+      category: true,
+      location: true,
+      offers: true,
+      redeemed: true,
+      status: true,
+    },
+  )
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
     return () => window.clearTimeout(timer)
   }, [search])
+
+  const urlCategory = searchParams.get('category') || 'All'
+  useEffect(() => {
+    setCategory(urlCategory)
+    setPage(1)
+  }, [urlCategory])
 
   const loadMerchants = useCallback(async () => {
     setLoading(true)
@@ -259,11 +285,101 @@ export function MerchantsPage() {
   async function handleBulkChangeCategory(): Promise<void> {
     try {
       setError(null)
-      await bulkChangeMerchantCategoryApi(selectedIds, MERCHANT_CATEGORIES[0])
+      await bulkChangeMerchantCategoryApi(selectedIds, bulkCategory)
       setSelectedIds([])
+      setBulkConfirm(null)
       await loadMerchants()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to change category')
+      setBulkConfirm(null)
+    }
+  }
+
+  async function handleExport(): Promise<void> {
+    try {
+      setError(null)
+      setBusyAction('export')
+      const all = await collectAllPages(async (page, pageSize) => {
+        const data = await listMerchantsApi({
+          page,
+          pageSize,
+          search: debouncedSearch,
+          status,
+          category,
+          state,
+          added,
+          includeDeleted,
+        })
+        return { items: data.merchants, totalPages: data.pagination.totalPages }
+      })
+      downloadCsv(
+        'merchants.csv',
+        [
+          'merchantCode',
+          'businessName',
+          'category',
+          'city',
+          'state',
+          'phone',
+          'email',
+          'status',
+          'offersCount',
+          'redeemedCount',
+          'createdAt',
+        ],
+        all.map((merchant) => [
+          merchant.merchantCode,
+          merchant.businessName,
+          merchant.category,
+          merchant.city,
+          merchant.state,
+          merchant.phone,
+          merchant.email,
+          merchant.status,
+          merchant.offersCount,
+          merchant.redeemedCount,
+          merchant.createdAt,
+        ]),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to export merchants')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleImportFile(file: File | undefined): Promise<void> {
+    if (!file) return
+    try {
+      setError(null)
+      setBusyAction('import')
+      const text = await file.text()
+      const rows = parseCsv(text)
+      if (rows.length === 0) {
+        setError('The CSV file has no merchant rows to import.')
+        return
+      }
+      const result = await importMerchantsCsvApi(rows)
+      const failedNote =
+        result.failed.length > 0
+          ? ` ${result.failed.length} row(s) failed${
+              result.failed[0] ? `: ${result.failed[0].message}` : ''
+            }.`
+          : ''
+      if (result.created === 0) {
+        setError(`No merchants were imported.${failedNote}`)
+      } else {
+        setError(null)
+        await loadMerchants()
+        if (result.failed.length > 0) {
+          setError(`Imported ${result.created} merchant(s).${failedNote}`)
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to import merchants')
+    } finally {
+      setBusyAction(null)
+      if (importInputRef.current) importInputRef.current.value = ''
     }
   }
 
@@ -273,7 +389,7 @@ export function MerchantsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -289,16 +405,35 @@ export function MerchantsPage() {
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              className="inline-flex h-[38px] min-h-[38px] items-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy transition hover:bg-page"
-            >
-              Import CSV
-            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(event) => void handleImportFile(event.target.files?.[0])}
+            />
+            {canCreate ? (
+              <button
+                type="button"
+                onClick={() => importInputRef.current?.click()}
+                disabled={busyAction === 'import'}
+                className="inline-flex h-10 min-h-[40px] items-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy transition hover:bg-page disabled:opacity-60"
+              >
+                {busyAction === 'import' ? 'Importing…' : 'Import CSV'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="inline-flex h-10 min-h-[40px] items-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy transition hover:bg-page"
+                disabled
+              >
+                Import CSV
+              </button>
+            )}
             {canCreate ? (
               <Link
                 to="/merchants/create"
-                className="inline-flex h-[38px] min-h-[38px] items-center rounded-lg bg-action px-4 text-[13px] font-semibold text-white transition hover:bg-[#c82027]"
+                className="inline-flex h-10 min-h-[40px] items-center rounded-lg bg-action px-4 text-[13px] font-semibold text-white transition hover:bg-[#c82027]"
               >
                 + New merchant
               </Link>
@@ -328,7 +463,7 @@ export function MerchantsPage() {
                   setPage(1)
                 }}
                 placeholder="Search by name, city, phone, reg. no."
-                className="h-[38px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
+                className="h-10 min-h-[40px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -358,6 +493,10 @@ export function MerchantsPage() {
                 options={[
                   { value: 'All', label: 'All' },
                   ...MERCHANT_CATEGORIES.map((c) => ({ value: c, label: c })),
+                  ...(category !== 'All' &&
+                  !(MERCHANT_CATEGORIES as readonly string[]).includes(category)
+                    ? [{ value: category, label: category }]
+                    : []),
                 ]}
               />
               <FilterPill
@@ -397,16 +536,23 @@ export function MerchantsPage() {
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
               type="button"
-              className="inline-flex h-[38px] items-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page"
+              onClick={() => void handleExport()}
+              disabled={busyAction === 'export'}
+              className="inline-flex h-10 min-h-[40px] items-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page disabled:opacity-60"
             >
-              Export
+              {busyAction === 'export' ? 'Exporting…' : 'Export'}
             </button>
-            <button
-              type="button"
-              className="inline-flex h-[38px] items-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page"
-            >
-              Columns
-            </button>
+            <ColumnPicker
+              columns={[
+                { key: 'category', label: 'Category' },
+                { key: 'location', label: 'City / State' },
+                { key: 'offers', label: 'Offers' },
+                { key: 'redeemed', label: 'Redeemed' },
+                { key: 'status', label: 'Status' },
+              ]}
+              visible={visible}
+              onChange={setColumnVisible}
+            />
           </div>
         </div>
 
@@ -420,7 +566,7 @@ export function MerchantsPage() {
               <>
                 <BulkBtn label="Activate" onClick={() => setBulkConfirm('activate')} />
                 <BulkBtn label="Deactivate" onClick={() => setBulkConfirm('deactivate')} />
-                <BulkBtn label="Change category" onClick={() => void handleBulkChangeCategory()} />
+                <BulkBtn label="Change category" onClick={() => setBulkConfirm('category')} />
               </>
             ) : null}
             {canDelete ? (
@@ -437,7 +583,7 @@ export function MerchantsPage() {
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
           <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overscroll-x-contain">
             <table className="min-w-[980px] w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-border bg-[#FAF9F6]">
@@ -451,11 +597,11 @@ export function MerchantsPage() {
                     />
                   </th>
                   <Th>Merchant</Th>
-                  <Th>Category</Th>
-                  <Th>City / State</Th>
-                  <Th>Offers</Th>
-                  <Th>Redeemed</Th>
-                  <Th>Status</Th>
+                  {visible.category ? <Th>Category</Th> : null}
+                  {visible.location ? <Th>City / State</Th> : null}
+                  {visible.offers ? <Th>Offers</Th> : null}
+                  {visible.redeemed ? <Th>Redeemed</Th> : null}
+                  {visible.status ? <Th>Status</Th> : null}
                   <th className="w-12 px-3 py-3" />
                 </tr>
               </thead>
@@ -505,24 +651,34 @@ export function MerchantsPage() {
                           </span>
                         </button>
                       </td>
-                      <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
-                        {merchant.category}
-                      </td>
-                      <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
-                        {locationLabel(merchant)}
-                      </td>
-                      <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
-                        {merchant.offersCount}{' '}
-                        {merchant.offersCount === 1 ? 'offer' : 'offers'}
-                      </td>
-                      <td className="px-4 py-3.5 align-middle text-[13px] tabular-nums text-navy">
-                        {merchant.redeemedCount > 0
-                          ? `${merchant.redeemedCount.toLocaleString('en-US')} redeemed`
-                          : '—'}
-                      </td>
-                      <td className="px-4 py-3.5 align-middle">
-                        <MerchantStatusBadge status={merchant.status} />
-                      </td>
+                      {visible.category ? (
+                        <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
+                          {merchant.category}
+                        </td>
+                      ) : null}
+                      {visible.location ? (
+                        <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
+                          {locationLabel(merchant)}
+                        </td>
+                      ) : null}
+                      {visible.offers ? (
+                        <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
+                          {merchant.offersCount}{' '}
+                          {merchant.offersCount === 1 ? 'offer' : 'offers'}
+                        </td>
+                      ) : null}
+                      {visible.redeemed ? (
+                        <td className="px-4 py-3.5 align-middle text-[13px] tabular-nums text-navy">
+                          {merchant.redeemedCount > 0
+                            ? `${merchant.redeemedCount.toLocaleString('en-US')} redeemed`
+                            : '—'}
+                        </td>
+                      ) : null}
+                      {visible.status ? (
+                        <td className="px-4 py-3.5 align-middle">
+                          <MerchantStatusBadge status={merchant.status} />
+                        </td>
+                      ) : null}
                       <td className="px-3 py-3.5 align-middle">
                         <RowActionButton
                           label={`Actions for ${merchant.businessName}`}
@@ -535,7 +691,17 @@ export function MerchantsPage() {
                 })}
                 {pageItems.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-14 text-center text-[13px] text-muted">
+                    <td
+                      colSpan={
+                        3 +
+                        Number(visible.category) +
+                        Number(visible.location) +
+                        Number(visible.offers) +
+                        Number(visible.redeemed) +
+                        Number(visible.status)
+                      }
+                      className="px-4 py-14 text-center text-[13px] text-muted"
+                    >
                       {loading ? 'Loading merchants…' : 'No merchants match your filters.'}
                     </td>
                   </tr>
@@ -629,7 +795,7 @@ export function MerchantsPage() {
       />
 
       <ConfirmDialog
-        open={bulkConfirm !== null}
+        open={bulkConfirm !== null && bulkConfirm !== 'category'}
         title={
           bulkConfirm === 'delete'
             ? 'Delete selected'
@@ -648,9 +814,54 @@ export function MerchantsPage() {
         destructive={bulkConfirm === 'delete'}
         onCancel={() => setBulkConfirm(null)}
         onConfirm={() => {
-          if (bulkConfirm) void runBulk(bulkConfirm)
+          if (bulkConfirm && bulkConfirm !== 'category') void runBulk(bulkConfirm)
         }}
       />
+
+      {bulkConfirm === 'category' ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md rounded-xl border border-border bg-white p-6"
+          >
+            <h2 className="text-[18px] font-bold text-navy">Change category</h2>
+            <p className="mt-2 text-[14px] text-muted">
+              Apply a category to {selectedIds.length} selected merchant(s).
+            </p>
+            <label className="mt-4 block">
+              <span className="text-[12px] font-semibold text-navy">Category</span>
+              <select
+                value={bulkCategory}
+                onChange={(event) => setBulkCategory(event.target.value)}
+                className="mt-1.5 h-10 w-full rounded-lg border border-border bg-white px-3 text-[13px] text-navy outline-none focus:border-navy"
+              >
+                {MERCHANT_CATEGORIES.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setBulkConfirm(null)}
+                className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy hover:bg-page"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBulkChangeCategory()}
+                className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary"
+              >
+                Change category
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -679,7 +890,7 @@ function FilterPill({
   const shown = displayValue ?? options.find((o) => o.value === value)?.label ?? value
 
   return (
-    <label className="relative inline-flex h-[38px] min-h-[38px] w-full cursor-pointer items-center gap-1 rounded-lg border border-border bg-white pl-3 pr-8 text-[13px] text-navy sm:w-auto">
+    <label className="relative inline-flex h-10 min-h-[40px] w-full cursor-pointer items-center gap-1 rounded-lg border border-border bg-white pl-3 pr-8 text-[13px] text-navy sm:w-auto">
       <span className="shrink-0 text-muted">{label}:</span>
       <span className="min-w-0 truncate font-semibold">{shown}</span>
       <span className="pointer-events-none absolute right-2.5 text-muted">

@@ -29,7 +29,7 @@ export function DateFilter() {
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-[38px] min-h-[38px] shrink-0 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[13px] font-medium text-navy transition hover:bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy/15"
+        className="inline-flex h-10 min-h-[40px] shrink-0 items-center gap-2 rounded-lg border border-border bg-white px-3 text-[13px] font-medium text-navy transition hover:bg-page focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy/15"
       >
         {value}
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
@@ -49,7 +49,7 @@ export function DateFilter() {
           id={listId}
           role="listbox"
           aria-label="Date range"
-          className="absolute right-0 z-20 mt-1 min-w-full overflow-hidden rounded-lg border border-border bg-white py-1 shadow-lg"
+          className="absolute right-0 z-30 mt-1 max-h-[min(16rem,70dvh)] min-w-full overflow-y-auto rounded-lg border border-border bg-white py-1 shadow-lg"
         >
           {OPTIONS.map((option) => (
             <li key={option} role="option" aria-selected={option === value}>

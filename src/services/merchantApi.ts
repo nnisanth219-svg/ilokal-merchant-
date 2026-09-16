@@ -212,3 +212,29 @@ export function bulkChangeMerchantCategoryApi(
     'Unable to change category',
   )
 }
+
+export function importMerchantsCsvApi(
+  rows: Record<string, string>[],
+): Promise<{
+  created: number
+  failed: { row: number; businessName: string; message: string }[]
+}> {
+  return request(
+    '/api/merchants/import',
+    { method: 'POST', body: JSON.stringify({ rows }) },
+    'Unable to import merchants',
+  )
+}
+
+export function geocodeMerchantLocationApi(input: {
+  address: string
+  postcode?: string
+  city?: string
+  state?: string
+}): Promise<{ latitude: string; longitude: string; displayName: string }> {
+  return request(
+    '/api/merchants/geocode',
+    { method: 'POST', body: JSON.stringify(input) },
+    'Unable to confirm location',
+  )
+}

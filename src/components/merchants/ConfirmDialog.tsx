@@ -20,12 +20,12 @@ export function ConfirmDialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        className="w-full max-w-md rounded-xl border border-border bg-white p-6 shadow-[0_20px_40px_rgba(16,43,89,0.16)]"
+        className="max-h-[min(90dvh,36rem)] w-full max-w-md overflow-y-auto rounded-xl border border-border bg-white p-6 shadow-[0_20px_40px_rgba(16,43,89,0.16)]"
       >
         <h2 id="confirm-dialog-title" className="text-[18px] font-bold text-navy">
           {title}

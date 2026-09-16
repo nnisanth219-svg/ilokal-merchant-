@@ -5,7 +5,9 @@ import {
   type TextareaHTMLAttributes,
 } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 import { MERCHANT_CATEGORIES } from '../../data/merchants'
+import { geocodeMerchantLocationApi } from '../../services/merchantApi'
 import type {
   Merchant,
   MerchantFormErrors,
@@ -34,6 +36,7 @@ interface MerchantWizardProps {
   initialValues: MerchantFormValues
   merchant?: Merchant
   onSubmit: (values: MerchantFormValues) => void | Promise<void>
+  onSaveDraft: (values: MerchantFormValues) => Promise<Merchant>
 }
 
 export function MerchantWizard({
@@ -41,29 +44,34 @@ export function MerchantWizard({
   initialValues,
   merchant,
   onSubmit,
+  onSaveDraft,
 }: MerchantWizardProps) {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [step, setStep] = useState<MerchantWizardStep>('business')
   const [values, setValues] = useState<MerchantFormValues>(initialValues)
   const [errors, setErrors] = useState<MerchantFormErrors>({})
   const [draftSaved, setDraftSaved] = useState(false)
+  const [savedMerchant, setSavedMerchant] = useState<Merchant | undefined>(merchant)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [savingDraft, setSavingDraft] = useState(false)
 
-  const previewCode = merchant?.merchantCode ?? 'MRC-0342'
+  const previewCode = savedMerchant?.merchantCode ?? 'Assigned on save'
   const previewSlug =
-    merchant?.slug ??
+    savedMerchant?.slug ??
     (values.businessName
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '') ||
-      'kedai-kopi-seri-wangi')
-  const createdBy = merchant
-    ? `${merchant.createdBy} · ${new Date(merchant.createdAt).toLocaleDateString('en-GB', {
+      'assigned-on-save')
+  const createdBy = savedMerchant
+    ? `${savedMerchant.createdBy} · ${new Date(savedMerchant.createdAt).toLocaleDateString('en-GB', {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
       })}`
-    : 'Aisyah R. · 11 Aug 2026'
+    : `${user?.name ?? 'You'} · today`
 
   const stepIndex = STEPS.findIndex((s) => s.id === step)
 
@@ -73,6 +81,29 @@ export function MerchantWizard({
   ): void {
     setValues((prev) => ({ ...prev, [key]: value }))
     setDraftSaved(false)
+    setSaveError(null)
+  }
+
+  async function persistDraft(): Promise<boolean> {
+    const nextErrors = validateBusiness()
+    setErrors(nextErrors)
+    if (Object.keys(nextErrors).length > 0) {
+      setStep('business')
+      return false
+    }
+    setSavingDraft(true)
+    setSaveError(null)
+    try {
+      const saved = await onSaveDraft(values)
+      setSavedMerchant(saved)
+      setDraftSaved(true)
+      return true
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Unable to save draft')
+      return false
+    } finally {
+      setSavingDraft(false)
+    }
   }
 
   function validateBusiness(): MerchantFormErrors {
@@ -92,7 +123,6 @@ export function MerchantWizard({
 
     if (stepIndex < STEPS.length - 1) {
       setStep(STEPS[stepIndex + 1].id)
-      setDraftSaved(true)
       return
     }
 
@@ -102,7 +132,9 @@ export function MerchantWizard({
       setStep('business')
       return
     }
-    void Promise.resolve(onSubmit(values))
+    void Promise.resolve(onSubmit(values)).catch((err: unknown) => {
+      setSaveError(err instanceof Error ? err.message : 'Unable to publish merchant')
+    })
   }
 
   const readiness = useMemo(() => {
@@ -116,7 +148,7 @@ export function MerchantWizard({
   }, [values, mode])
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="flex min-h-16 shrink-0 flex-col gap-3 border-b border-border bg-navy px-4 py-3 text-white sm:px-6 md:flex-row md:items-center md:justify-between md:gap-4 md:py-0">
         <div className="min-w-0">
           <p className="text-[12px] text-white/65">
@@ -131,33 +163,37 @@ export function MerchantWizard({
           <p className="mt-0.5 text-[11px] font-medium text-gold">
             {draftSaved ? 'Draft saved' : 'Unsaved changes'}
           </p>
+          {saveError ? (
+            <p className="mt-0.5 text-[11px] font-medium text-[#ffb4b4]">{saveError}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => navigate('/merchants')}
-            className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/20 px-3.5 text-[13px] font-semibold text-white/90 hover:bg-white/5 sm:flex-none"
+            className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/20 px-3.5 text-[13px] font-semibold text-white/90 hover:bg-white/5 sm:flex-none"
           >
             Cancel
           </button>
           <button
             type="button"
-            onClick={() => setDraftSaved(true)}
-            className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/20 px-3.5 text-[13px] font-semibold text-white hover:bg-white/5 sm:flex-none"
+            onClick={() => void persistDraft()}
+            disabled={savingDraft}
+            className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/20 px-3.5 text-[13px] font-semibold text-white hover:bg-white/5 sm:flex-none disabled:opacity-60"
           >
-            Save draft
+            {savingDraft ? 'Saving…' : 'Save draft'}
           </button>
           <button
             type="button"
             onClick={handleSaveContinue}
-            className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-gold px-3.5 text-[13px] font-bold text-navy hover:bg-[#e5a814] sm:w-auto"
+            className="inline-flex h-10 min-h-[40px] w-full items-center justify-center rounded-lg bg-gold px-3.5 text-[13px] font-bold text-navy hover:bg-[#e5a814] sm:w-auto"
           >
             {stepIndex === STEPS.length - 1 ? 'Publish' : 'Save & continue'}
           </button>
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
         <aside className="hidden w-[260px] shrink-0 overflow-y-auto border-r border-border bg-[#FBFBF9] p-4 md:block">
           <p className="mb-3 px-1 text-[11px] font-bold uppercase tracking-[0.14em] text-muted">
             Setup steps
@@ -466,6 +502,47 @@ function LocationStep({
   values: MerchantFormValues
   onChange: <K extends keyof MerchantFormValues>(key: K, value: MerchantFormValues[K]) => void
 }) {
+  const [confirming, setConfirming] = useState(false)
+  const [confirmError, setConfirmError] = useState<string | null>(null)
+  const [confirmNote, setConfirmNote] = useState<string | null>(null)
+  const lat = Number.parseFloat(values.latitude)
+  const lng = Number.parseFloat(values.longitude)
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng)
+
+  async function confirmLocation(): Promise<void> {
+    setConfirming(true)
+    setConfirmError(null)
+    setConfirmNote(null)
+    try {
+      if (values.address.trim()) {
+        const result = await geocodeMerchantLocationApi({
+          address: values.address,
+          postcode: values.postcode,
+        })
+        onChange('latitude', result.latitude)
+        onChange('longitude', result.longitude)
+        setConfirmNote(result.displayName)
+        return
+      }
+
+      if (!navigator.geolocation) {
+        throw new Error('Enter an address or allow location access to confirm the pin.')
+      }
+
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, () =>
+          reject(new Error('Location permission was denied.')),
+        )
+      })
+      onChange('latitude', position.coords.latitude.toFixed(6))
+      onChange('longitude', position.coords.longitude.toFixed(6))
+      setConfirmNote('Pin set from this device location.')
+    } catch (err) {
+      setConfirmError(err instanceof Error ? err.message : 'Unable to confirm location')
+    } finally {
+      setConfirming(false)
+    }
+  }
   return (
     <div className="mx-auto max-w-5xl">
       <h2 className="text-[22px] font-bold tracking-[-0.02em] text-navy">Location</h2>
@@ -531,27 +608,41 @@ function LocationStep({
           </div>
           <button
             type="button"
-            className="inline-flex h-9 items-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary"
+            onClick={() => void confirmLocation()}
+            disabled={confirming}
+            className="inline-flex h-9 items-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary disabled:opacity-60"
           >
-            Confirm location
+            {confirming ? 'Confirming…' : 'Confirm location'}
           </button>
+          {confirmError ? <p className="text-[12px] text-action">{confirmError}</p> : null}
+          {confirmNote ? <p className="text-[12px] text-success">{confirmNote}</p> : null}
         </div>
 
         <div className="overflow-hidden rounded-xl border border-border bg-white">
           <div className="border-b border-border px-4 py-3">
             <p className="text-[12px] font-semibold text-navy">Map preview</p>
-            <p className="text-[11px] text-muted">Frontend placeholder only</p>
+            <p className="text-[11px] text-muted">
+              {hasCoords ? 'Confirmed coordinates from the address or device location.' : 'Confirm location to place a pin.'}
+            </p>
           </div>
-          <div className="relative h-[280px] bg-[linear-gradient(135deg,#E8EEF6_0%,#F4F2ED_55%,#DCE6F4_100%)]">
-            <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-navy text-gold shadow-lg">
-                ●
-              </span>
-              <span className="mt-2 rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-navy shadow">
-                Drop pin
-              </span>
+          {hasCoords ? (
+            <iframe
+              title="Merchant map preview"
+              className="h-[280px] w-full border-0"
+              src={`https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.01}%2C${lat - 0.01}%2C${lng + 0.01}%2C${lat + 0.01}&layer=mapnik&marker=${lat}%2C${lng}`}
+            />
+          ) : (
+            <div className="relative h-[280px] bg-[linear-gradient(135deg,#E8EEF6_0%,#F4F2ED_55%,#DCE6F4_100%)]">
+              <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-navy text-gold shadow-lg">
+                  ●
+                </span>
+                <span className="mt-2 rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-navy shadow">
+                  No pin yet
+                </span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { RedemptionStatusBadge } from '../components/redemptions/RedemptionStatusBadge'
 import {
   BulkBtn,
@@ -26,6 +26,8 @@ import {
   type Redemption,
   type RedemptionStatus,
 } from '../types/redemption'
+import { downloadCsv } from '../utils/csv'
+import { collectAllPages } from '../utils/paginate'
 
 type StatusFilter = RedemptionStatus | 'all'
 type DateFilter = 'any' | '7d' | '30d' | '90d'
@@ -39,6 +41,7 @@ const DATE_FILTERS: { value: DateFilter; label: string }[] = [
 
 export function RedemptionsPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [items, setItems] = useState<Redemption[]>([])
   const [summary, setSummary] = useState<RedemptionListResponse['summary']>({
     total: 0,
@@ -61,7 +64,7 @@ export function RedemptionsPage() {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [merchant, setMerchant] = useState('all')
+  const [merchant, setMerchant] = useState(() => searchParams.get('merchantId') || 'all')
   const [member, setMember] = useState('all')
   const [offer, setOffer] = useState('all')
   const [status, setStatus] = useState<StatusFilter>('all')
@@ -71,11 +74,19 @@ export function RedemptionsPage() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
   const [exportMsg, setExportMsg] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [selectedRows, setSelectedRows] = useState<Record<string, Redemption>>({})
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
     return () => window.clearTimeout(timer)
   }, [search])
+
+  const urlMerchant = searchParams.get('merchantId') || 'all'
+  useEffect(() => {
+    setMerchant(urlMerchant)
+    setPage(1)
+  }, [urlMerchant])
 
   const loadRedemptions = useCallback(async () => {
     setLoading(true)
@@ -178,6 +189,13 @@ export function RedemptionsPage() {
     if (allPageSelected) {
       const pageIds = new Set(pageItems.map((r) => r.id))
       setSelectedIds((prev) => prev.filter((id) => !pageIds.has(id)))
+      setSelectedRows((prev) => {
+        const next = { ...prev }
+        pageItems.forEach((row) => {
+          delete next[row.id]
+        })
+        return next
+      })
       return
     }
     setSelectedIds((prev) => {
@@ -185,25 +203,85 @@ export function RedemptionsPage() {
       pageItems.forEach((r) => next.add(r.id))
       return [...next]
     })
+    setSelectedRows((prev) => {
+      const next = { ...prev }
+      pageItems.forEach((row) => {
+        next[row.id] = row
+      })
+      return next
+    })
   }
 
-  function toggleSelect(id: string): void {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  function toggleSelect(row: Redemption): void {
+    setSelectedIds((prev) => (prev.includes(row.id) ? prev.filter((x) => x !== row.id) : [...prev, row.id]))
+    setSelectedRows((prev) => {
+      const next = { ...prev }
+      if (next[row.id]) delete next[row.id]
+      else next[row.id] = row
+      return next
+    })
   }
 
-  function handleExport(): void {
-    setExportMsg(`Exported ${total} redemptions`)
-    window.setTimeout(() => setExportMsg(null), 2500)
+  function redemptionCsvRows(rows: Redemption[]): Array<Array<string>> {
+    return rows.map((row) => [
+      row.redemptionCode,
+      row.memberName,
+      row.merchantName,
+      row.offerTitle,
+      row.redeemedAt,
+      row.method,
+      row.status,
+    ])
+  }
+
+  async function handleExport(): Promise<void> {
+    try {
+      setError(null)
+      setExporting(true)
+      const all = await collectAllPages(async (pageNum, pageSize) => {
+        const data = await listRedemptionsApi({
+          page: pageNum,
+          pageSize,
+          search: debouncedSearch,
+          status,
+          memberId: member,
+          merchantId: merchant,
+          offerId: offer,
+          date: dateFilter,
+        })
+        return { items: data.redemptions, totalPages: data.pagination.totalPages }
+      })
+      downloadCsv(
+        'redemptions.csv',
+        ['redemptionCode', 'member', 'merchant', 'offer', 'redeemedAt', 'method', 'status'],
+        redemptionCsvRows(all),
+      )
+      setExportMsg(`Exported ${all.length} redemptions`)
+      window.setTimeout(() => setExportMsg(null), 2500)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to export redemptions')
+    } finally {
+      setExporting(false)
+    }
   }
 
   function handleBulkExport(): void {
-    setExportMsg(`Exported ${selectedIds.length} selected redemptions`)
-    setSelectedIds([])
+    const rows = selectedIds.map((id) => selectedRows[id]).filter(Boolean)
+    if (rows.length === 0) {
+      setError('Select redemptions to export.')
+      return
+    }
+    downloadCsv(
+      'redemptions-selected.csv',
+      ['redemptionCode', 'member', 'merchant', 'offer', 'redeemedAt', 'method', 'status'],
+      redemptionCsvRows(rows),
+    )
+    setExportMsg(`Exported ${rows.length} selected redemptions`)
     window.setTimeout(() => setExportMsg(null), 2500)
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -218,10 +296,11 @@ export function RedemptionsPage() {
             ) : null}
             <button
               type="button"
-              onClick={handleExport}
-              className="inline-flex h-[38px] min-h-[38px] items-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy transition hover:bg-page"
+              onClick={() => void handleExport()}
+              disabled={exporting}
+              className="inline-flex h-10 min-h-[40px] items-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy transition hover:bg-page disabled:opacity-60"
             >
-              Export
+              {exporting ? 'Exporting…' : 'Export'}
             </button>
           </div>
         </div>
@@ -250,7 +329,7 @@ export function RedemptionsPage() {
                   setPage(1)
                 }}
                 placeholder="Search redemption ID, member, merchant or offer"
-                className="h-[38px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
+                className="h-10 min-h-[40px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -266,7 +345,13 @@ export function RedemptionsPage() {
                   setMerchant(v)
                   setPage(1)
                 }}
-                options={[{ value: 'all', label: 'All' }, ...merchantOptions]}
+                options={[
+                  { value: 'all', label: 'All' },
+                  ...merchantOptions,
+                  ...(merchant !== 'all' && !merchantOptions.some((o) => o.value === merchant)
+                    ? [{ value: merchant, label: 'Selected merchant' }]
+                    : []),
+                ]}
               />
               <FilterPill
                 label="Member"
@@ -346,7 +431,7 @@ export function RedemptionsPage() {
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
           <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overscroll-x-contain">
               <table className="min-w-[1080px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">
@@ -391,7 +476,7 @@ export function RedemptionsPage() {
                           <input
                             type="checkbox"
                             checked={selected}
-                            onChange={() => toggleSelect(row.id)}
+                            onChange={() => toggleSelect(row)}
                             aria-label={`Select ${row.redemptionCode}`}
                             className="h-[14px] w-[14px] accent-navy"
                           />

@@ -10,7 +10,13 @@ export function InviteAdminPage() {
   const [role, setRole] = useState<AdminRole>('Admin')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [sentEmail, setSentEmail] = useState<string | null>(null)
+  const [result, setResult] = useState<{
+    email: string
+    emailSent: boolean
+    emailConfigured: boolean
+    inviteUrl: string
+  } | null>(null)
+  const [copied, setCopied] = useState(false)
 
   function resetForm(): void {
     setFullName('')
@@ -18,7 +24,8 @@ export function InviteAdminPage() {
     setRole('Admin')
     setError(null)
     setSaving(false)
-    setSentEmail(null)
+    setResult(null)
+    setCopied(false)
   }
 
   async function onSubmit(e: FormEvent): Promise<void> {
@@ -35,7 +42,12 @@ export function InviteAdminPage() {
     setSaving(true)
     try {
       const created = await inviteAdminUserApi({ fullName, email, role })
-      setSentEmail(created.email)
+      setResult({
+        email: created.email,
+        emailSent: created.emailSent,
+        emailConfigured: created.emailConfigured,
+        inviteUrl: created.inviteUrl,
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to invite admin user')
     } finally {
@@ -43,9 +55,20 @@ export function InviteAdminPage() {
     }
   }
 
-  if (sentEmail) {
+  async function copyInviteLink(): Promise<void> {
+    if (!result?.inviteUrl) return
+    try {
+      await navigator.clipboard.writeText(result.inviteUrl)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setError('Unable to copy the invitation link')
+    }
+  }
+
+  if (result) {
     return (
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
         <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
           <p className="text-[12px] text-muted">
             <Link to="/admin-users" className="font-medium text-navy hover:underline">
@@ -61,7 +84,12 @@ export function InviteAdminPage() {
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
           <div className="mx-auto max-w-2xl rounded-xl border border-border bg-white p-5 sm:p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#E8F6F0] text-success">
+            <div
+              className={[
+                'flex h-12 w-12 items-center justify-center rounded-full',
+                result.emailSent ? 'bg-[#E8F6F0] text-success' : 'bg-[#FFF4D6] text-[#A67A00]',
+              ].join(' ')}
+            >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path
                   d="M5 13l4 4L19 7"
@@ -72,11 +100,29 @@ export function InviteAdminPage() {
                 />
               </svg>
             </div>
-            <h2 className="mt-4 text-[18px] font-bold text-navy">Invitation sent</h2>
+            <h2 className="mt-4 text-[18px] font-bold text-navy">
+              {result.emailSent ? 'Invitation email sent' : 'Admin invitation created'}
+            </h2>
             <p className="mt-1 text-[13px] text-muted">
-              An invitation has been sent to{' '}
-              <span className="font-semibold text-navy">{sentEmail}</span>.
+              {result.emailSent
+                ? `An invitation email was sent to ${result.email}.`
+                : result.emailConfigured
+                  ? `The admin account for ${result.email} was created, but the invitation email could not be delivered.`
+                  : `The admin account for ${result.email} was created. Email delivery is not configured, so no invitation email was sent. Share the link below instead.`}
             </p>
+            <div className="mt-4 rounded-lg border border-border bg-page px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+                Invitation link
+              </p>
+              <p className="mt-1 break-all text-[12px] text-navy">{result.inviteUrl}</p>
+              <button
+                type="button"
+                onClick={() => void copyInviteLink()}
+                className="mt-3 inline-flex h-10 min-h-[40px] items-center rounded-lg border border-border bg-white px-3 text-[12px] font-semibold text-navy hover:bg-white"
+              >
+                {copied ? 'Copied' : 'Copy link'}
+              </button>
+            </div>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row">
               <button
                 type="button"
@@ -100,7 +146,7 @@ export function InviteAdminPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <p className="text-[12px] text-muted">
           <Link to="/admin-users" className="font-medium text-navy hover:underline">
@@ -111,7 +157,7 @@ export function InviteAdminPage() {
         </p>
         <h1 className="mt-1 text-[18px] font-bold tracking-[-0.02em] text-navy">Invite admin</h1>
         <p className="mt-0.5 text-[12px] text-muted">
-          Send an invitation to a new administrator for the iLokal portal.
+          Create a pending administrator and share an invitation link. Email is sent only when SMTP is configured.
         </p>
       </header>
 
@@ -182,7 +228,7 @@ export function InviteAdminPage() {
               disabled={saving}
               className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary disabled:opacity-60"
             >
-              {saving ? 'Sending…' : 'Send invitation'}
+              {saving ? 'Creating…' : 'Create invitation'}
             </button>
           </div>
         </form>

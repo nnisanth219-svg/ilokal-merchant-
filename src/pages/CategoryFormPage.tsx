@@ -101,7 +101,7 @@ export function CategoryFormPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <p className="text-[12px] text-muted">
           <Link to="/categories" className="font-medium text-navy hover:underline">

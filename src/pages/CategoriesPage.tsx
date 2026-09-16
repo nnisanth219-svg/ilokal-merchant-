@@ -138,12 +138,12 @@ export function CategoriesPage() {
         {
           id: 'merchants',
           label: 'View merchants',
-          onClick: () => navigate('/merchants'),
+          onClick: () => navigate(`/merchants?category=${encodeURIComponent(activeItem.name)}`),
         },
         {
           id: 'offers',
           label: 'View offers',
-          onClick: () => navigate('/offers'),
+          onClick: () => navigate(`/offers?category=${encodeURIComponent(activeItem.name)}`),
         },
         ...(activeItem.status === 'deleted'
           ? canDelete
@@ -247,7 +247,7 @@ export function CategoriesPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -260,7 +260,7 @@ export function CategoriesPage() {
           {canCreate ? (
             <Link
               to="/categories/create"
-              className="inline-flex h-[38px] min-h-[38px] w-full items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white transition hover:bg-navy-secondary sm:w-auto"
+              className="inline-flex h-10 min-h-[40px] w-full items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white transition hover:bg-navy-secondary sm:w-auto"
             >
               + Add category
             </Link>
@@ -290,7 +290,7 @@ export function CategoriesPage() {
                   setPage(1)
                 }}
                 placeholder="Search by category name"
-                className="h-[38px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
+                className="h-10 min-h-[40px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -339,7 +339,7 @@ export function CategoriesPage() {
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
           <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overscroll-x-contain">
               <table className="min-w-[980px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">

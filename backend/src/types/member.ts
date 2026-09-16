@@ -89,6 +89,7 @@ export interface MemberListQuery {
   status?: MemberStatusValue | 'all'
   plan?: MembershipPlanValue | 'all'
   joined?: JoinedFilterValue
+  merchantId?: string
   includeDeleted: boolean
   sortBy?: 'joinedAt' | 'fullName' | 'createdAt' | 'memberCode'
   sortOrder?: 'asc' | 'desc'

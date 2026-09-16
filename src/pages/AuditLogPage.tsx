@@ -129,7 +129,7 @@ export function AuditLogPage() {
   )
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="min-w-0">
           <h1 className="text-[18px] font-bold tracking-[-0.02em] text-navy">Audit log</h1>
@@ -163,7 +163,7 @@ export function AuditLogPage() {
                   setPage(1)
                 }}
                 placeholder="Search audit events"
-                className="h-[38px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
+                className="h-10 min-h-[40px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -234,7 +234,7 @@ export function AuditLogPage() {
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
           <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overscroll-x-contain">
               <table className="min-w-[1100px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">

@@ -5,12 +5,14 @@ import {
   bulkUpdateMerchantStatus,
   createMerchant,
   getMerchantById,
+  importMerchants,
   listMerchants,
   restoreMerchant,
   softDeleteMerchant,
   updateMerchant,
   updateMerchantStatus,
 } from '../services/merchant.service.js'
+import { geocodeAddress } from '../services/geo.service.js'
 import { recordAuditFromRequest } from '../services/auditLog.service.js'
 import type { MerchantListQuery, MerchantStatusValue } from '../types/merchant.js'
 import { AppError } from '../utils/errors.js'
@@ -266,6 +268,48 @@ export async function bulkCategoryHandler(
       metadata: { ids, count },
     })
     res.status(200).json({ success: true, data: { count } })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function importMerchantsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : req.body
+    if (!Array.isArray(rows)) {
+      throw new AppError(400, 'Import payload must be an array of merchant rows')
+    }
+    const data = await importMerchants(rows, actorName(req))
+    await recordAuditFromRequest(req, {
+      action: 'CREATE',
+      module: 'Merchants',
+      description: `Imported ${data.created} merchant(s) from CSV`,
+      metadata: { created: data.created, failed: data.failed.length },
+    })
+    res.status(200).json({ success: true, data })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function geocodeMerchantHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const raw = req.body as Record<string, unknown>
+    const address = typeof raw.address === 'string' ? raw.address.trim() : ''
+    const postcode = typeof raw.postcode === 'string' ? raw.postcode.trim() : ''
+    const city = typeof raw.city === 'string' ? raw.city.trim() : ''
+    const state = typeof raw.state === 'string' ? raw.state.trim() : ''
+    const query = [address, postcode, city, state].filter(Boolean).join(', ')
+    const data = await geocodeAddress(query)
+    res.status(200).json({ success: true, data })
   } catch (error) {
     next(error)
   }

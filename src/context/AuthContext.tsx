@@ -13,7 +13,7 @@ import { hasPermission, type AuthUser } from '../types/auth'
 interface AuthContextValue {
   user: AuthUser | null
   loading: boolean
-  login: (email: string, password: string) => Promise<AuthUser>
+  login: (email: string, password: string, keepSignedIn?: boolean) => Promise<AuthUser>
   logout: () => Promise<void>
   refresh: () => Promise<void>
   can: (module: string, action: string) => boolean
@@ -55,11 +55,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const login = useCallback(async (email: string, password: string) => {
-    const authenticatedUser = await loginRequest(email, password)
-    setUser(authenticatedUser)
-    return authenticatedUser
-  }, [])
+  const login = useCallback(
+    async (email: string, password: string, keepSignedIn = false) => {
+      const authenticatedUser = await loginRequest(email, password, keepSignedIn)
+      setUser(authenticatedUser)
+      return authenticatedUser
+    },
+    [],
+  )
 
   const logout = useCallback(async () => {
     await logoutRequest()

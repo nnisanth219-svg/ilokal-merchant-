@@ -216,7 +216,7 @@ export function AdminUserDetailPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 bg-navy px-4 py-5 text-white sm:px-6 sm:py-6">
         <p className="text-[12px] text-white/65">
           <Link to="/admin-users" className="hover:text-white">
@@ -249,7 +249,7 @@ export function AdminUserDetailPage() {
             <button
               type="button"
               onClick={() => navigate('/admin-users')}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+              className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
             >
               Back
             </button>
@@ -259,7 +259,7 @@ export function AdminUserDetailPage() {
                   type="button"
                   onClick={() => void handleSave()}
                   disabled={saving || user.status === 'deleted'}
-                  className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg bg-gold px-3.5 text-[13px] font-semibold text-navy hover:bg-[#e6c35a] disabled:opacity-60 sm:flex-none"
+                  className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg bg-gold px-3.5 text-[13px] font-semibold text-navy hover:bg-[#e6c35a] disabled:opacity-60 sm:flex-none"
                 >
                   {saving ? 'Saving…' : 'Save changes'}
                 </button>
@@ -267,7 +267,7 @@ export function AdminUserDetailPage() {
                   <button
                     type="button"
                     onClick={() => setConfirmDeactivate(true)}
-                    className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:w-auto"
+                    className="inline-flex h-10 min-h-[40px] w-full items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:w-auto"
                   >
                     Deactivate
                   </button>
@@ -364,7 +364,7 @@ export function AdminUserDetailPage() {
                 {isCustom ? ' Custom overrides are saved for this user.' : ''}
               </p>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overscroll-x-contain">
               <table className="min-w-[640px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">

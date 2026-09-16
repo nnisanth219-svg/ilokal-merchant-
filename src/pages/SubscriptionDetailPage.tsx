@@ -83,7 +83,7 @@ export function SubscriptionDetailPage() {
   const isSuspended = item.status === 'suspended'
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 bg-navy px-4 py-5 text-white sm:px-6 sm:py-6">
         <p className="text-[12px] text-white/65">
           <Link to="/subscriptions" className="hover:text-white">
@@ -120,49 +120,53 @@ export function SubscriptionDetailPage() {
             <button
               type="button"
               onClick={() => navigate('/subscriptions')}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+              className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
             >
               Back
             </button>
             <button
               type="button"
               onClick={() => navigate(`/members/${item.memberId}`)}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+              className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
             >
               View member
             </button>
             {canEdit ? (
               <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isSuspended) {
-                      void (async () => {
-                        try {
-                          setError(null)
-                          await updateSubscriptionStatusApi(item.id, 'active')
-                          await reload()
-                        } catch (err) {
-                          setError(
-                            err instanceof Error ? err.message : 'Unable to resume subscription',
-                          )
-                        }
-                      })()
-                    } else {
-                      setConfirm('suspend')
-                    }
-                  }}
-                  className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
-                >
-                  {isSuspended ? 'Resume' : 'Suspend'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirm('cancel')}
-                  className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
-                >
-                  Cancel subscription
-                </button>
+                {item.status !== 'cancelled' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isSuspended) {
+                        void (async () => {
+                          try {
+                            setError(null)
+                            await updateSubscriptionStatusApi(item.id, 'active')
+                            await reload()
+                          } catch (err) {
+                            setError(
+                              err instanceof Error ? err.message : 'Unable to resume subscription',
+                            )
+                          }
+                        })()
+                      } else {
+                        setConfirm('suspend')
+                      }
+                    }}
+                    className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                  >
+                    {isSuspended ? 'Resume' : 'Suspend'}
+                  </button>
+                ) : null}
+                {item.status !== 'cancelled' ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirm('cancel')}
+                    className="inline-flex h-10 min-h-[40px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
+                  >
+                    Cancel subscription
+                  </button>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -211,7 +215,7 @@ export function SubscriptionDetailPage() {
           {item.payments.length === 0 ? (
             <p className="px-5 py-10 text-center text-[13px] text-muted">No payments yet.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overscroll-x-contain">
               <table className="min-w-[720px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">
@@ -279,7 +283,7 @@ export function SubscriptionDetailPage() {
       <ConfirmDialog
         open={confirm === 'cancel'}
         title="Cancel subscription?"
-        message={`Cancel the subscription for ${item.memberName}? This will mark it as suspended.`}
+        message={`Cancel the subscription for ${item.memberName}? This will mark it as cancelled.`}
         confirmLabel="Cancel subscription"
         destructive
         onCancel={() => setConfirm(null)}
@@ -287,7 +291,7 @@ export function SubscriptionDetailPage() {
           void (async () => {
             try {
               setError(null)
-              await updateSubscriptionStatusApi(item.id, 'suspended')
+              await updateSubscriptionStatusApi(item.id, 'cancelled')
               await reload()
               setConfirm(null)
             } catch (err) {

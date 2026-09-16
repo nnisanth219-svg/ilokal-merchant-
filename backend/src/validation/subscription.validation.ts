@@ -4,7 +4,7 @@ import type {
 } from '../types/subscription.js'
 import { AppError } from '../utils/errors.js'
 
-const STATUSES = new Set(['active', 'expired', 'suspended'])
+const STATUSES = new Set(['active', 'expired', 'suspended', 'cancelled'])
 const PLANS = new Set(['Monthly', 'Annual'])
 
 function asString(value: unknown, field: string): string {
@@ -103,11 +103,11 @@ export function parseSubscriptionWriteBody(
 
 export function parseSubscriptionStatusBody(
   body: unknown,
-): 'active' | 'expired' | 'suspended' {
+): 'active' | 'expired' | 'suspended' | 'cancelled' {
   if (!body || typeof body !== 'object') throw new AppError(400, 'Invalid request body')
   const status = (body as Record<string, unknown>).status
   if (typeof status !== 'string' || !STATUSES.has(status)) {
     throw new AppError(400, 'Invalid status')
   }
-  return status as 'active' | 'expired' | 'suspended'
+  return status as 'active' | 'expired' | 'suspended' | 'cancelled'
 }

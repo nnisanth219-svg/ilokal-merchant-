@@ -48,6 +48,16 @@ export const env = {
   databaseUrl: required('DATABASE_URL'),
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '1d',
+  jwtRememberExpiresIn: process.env.JWT_REMEMBER_EXPIRES_IN ?? '30d',
+  jwtSessionExpiresIn: process.env.JWT_SESSION_EXPIRES_IN ?? '12h',
+  inviteTokenExpiresIn: process.env.INVITE_TOKEN_EXPIRES_IN ?? '7d',
+  passwordResetExpiresIn: process.env.PASSWORD_RESET_EXPIRES_IN ?? '1h',
+  smtpHost: (process.env.SMTP_HOST ?? '').trim(),
+  smtpPort: Number(process.env.SMTP_PORT ?? 587),
+  smtpUser: (process.env.SMTP_USER ?? '').trim(),
+  smtpPass: process.env.SMTP_PASS ?? '',
+  smtpFrom: (process.env.SMTP_FROM ?? process.env.SMTP_USER ?? '').trim(),
+  smtpSecure: process.env.SMTP_SECURE === 'true',
   frontendOrigins,
   frontendOrigin:
     nodeEnv === 'production'

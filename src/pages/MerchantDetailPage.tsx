@@ -1,20 +1,34 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { formatDate, formatDateTime } from '../components/cms/AdminListPrimitives'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
+import { MemberStatusBadge } from '../components/members/MemberStatusBadge'
 import { MerchantStatusBadge } from '../components/merchants/MerchantStatusBadge'
+import { OfferStatusBadge } from '../components/offers/OfferStatusBadge'
+import { RedemptionStatusBadge } from '../components/redemptions/RedemptionStatusBadge'
+import { ReviewStatusBadge } from '../components/reviews/ReviewStatusBadge'
 import { useAuth } from '../context/AuthContext'
+import { listMembersApi } from '../services/memberApi'
 import {
   getMerchantApi,
   restoreMerchantApi,
   softDeleteMerchantApi,
   updateMerchantStatusApi,
 } from '../services/merchantApi'
+import { listOffersApi } from '../services/offerApi'
+import { listRedemptionsApi } from '../services/redemptionApi'
+import { listReviewsApi } from '../services/reviewApi'
 import {
   canCreateInModule,
   canDeleteInModule,
   canEditInModule,
+  canViewModule,
 } from '../types/auth'
+import type { Member } from '../types/member'
 import type { Merchant } from '../types/merchant'
+import type { Offer } from '../types/offer'
+import type { Redemption } from '../types/redemption'
+import type { ReviewItem } from '../types/review'
 
 type DetailTab =
   | 'overview'
@@ -85,7 +99,7 @@ export function MerchantDetailPage() {
   const isDeleted = merchant.status === 'deleted'
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 bg-navy px-4 py-5 text-white sm:px-6 sm:py-6">
         <p className="text-[12px] text-white/65">
           <Link to="/merchants" className="hover:text-white">
@@ -135,7 +149,7 @@ export function MerchantDetailPage() {
             {canEdit && !isDeleted ? (
               <Link
                 to={`/merchants/${merchant.id}/edit`}
-                className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
               >
                 Edit
               </Link>
@@ -153,7 +167,7 @@ export function MerchantDetailPage() {
                     }
                   })()
                 }}
-                className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
               >
                 Restore
               </button>
@@ -162,7 +176,7 @@ export function MerchantDetailPage() {
               <button
                 type="button"
                 onClick={() => setConfirm('deactivate')}
-                className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
               >
                 Deactivate
               </button>
@@ -171,7 +185,7 @@ export function MerchantDetailPage() {
               <button
                 type="button"
                 onClick={() => setConfirm('delete')}
-                className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
+                className="inline-flex h-10 min-h-[40px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
               >
                 Delete
               </button>
@@ -179,7 +193,7 @@ export function MerchantDetailPage() {
           </div>
         </div>
 
-        <div className="mt-5 flex gap-1 overflow-x-auto pb-0.5">
+        <div className="mt-5 flex gap-1 overflow-x-auto overscroll-x-contain pb-0.5">
           <TabButton active={tab === 'overview'} label="Overview" onClick={() => setTab('overview')} />
           <TabButton
             active={tab === 'offers'}
@@ -214,38 +228,10 @@ export function MerchantDetailPage() {
         {tab === 'overview' ? (
           <OverviewTab merchant={merchant} canCreateOffer={canCreateOffer} />
         ) : null}
-        {tab === 'offers' ? (
-          <PlaceholderTab
-            title="Offers"
-            body={`${merchant.offersCount} offer${merchant.offersCount === 1 ? '' : 's'} linked to this merchant.`}
-            actionLabel="Manage offers"
-            onAction={() => navigate(`/merchants/${merchant.id}/offers`)}
-          />
-        ) : null}
-        {tab === 'redemptions' ? (
-          <PlaceholderTab
-            title="Redemptions"
-            body={`${merchant.redeemedCount.toLocaleString()} successful redemption${merchant.redeemedCount === 1 ? '' : 's'} recorded for this merchant.`}
-            actionLabel="View redemptions"
-            onAction={() => navigate('/redemptions')}
-          />
-        ) : null}
-        {tab === 'reviews' ? (
-          <PlaceholderTab
-            title="Reviews"
-            body={`${merchant.ratingsCount} review${merchant.ratingsCount === 1 ? '' : 's'} · average ${merchant.rating.toFixed(1)}.`}
-            actionLabel="View reviews"
-            onAction={() => navigate('/reviews')}
-          />
-        ) : null}
-        {tab === 'members' ? (
-          <PlaceholderTab
-            title="Members reached"
-            body={`${merchant.membersReached.toLocaleString()} member${merchant.membersReached === 1 ? '' : 's'} reached through this merchant.`}
-            actionLabel="View members"
-            onAction={() => navigate('/members')}
-          />
-        ) : null}
+        {tab === 'offers' ? <MerchantOffersTab merchant={merchant} /> : null}
+        {tab === 'redemptions' ? <MerchantRedemptionsTab merchant={merchant} /> : null}
+        {tab === 'reviews' ? <MerchantReviewsTab merchant={merchant} /> : null}
+        {tab === 'members' ? <MerchantMembersTab merchant={merchant} /> : null}
         {tab === 'activity' ? <ActivityList merchant={merchant} /> : null}
       </div>
 
@@ -306,7 +292,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={[
-        'shrink-0 whitespace-nowrap border-b-2 px-3 pb-2.5 text-[13px] font-semibold transition',
+        'inline-flex min-h-[40px] shrink-0 items-end whitespace-nowrap border-b-2 px-3 pb-2.5 text-[13px] font-semibold transition',
         active
           ? 'border-gold text-white'
           : 'border-transparent text-white/55 hover:text-white',
@@ -464,30 +450,321 @@ function ActivityList({
   )
 }
 
-function PlaceholderTab({
+function MerchantOffersTab({ merchant }: { merchant: Merchant }) {
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const canView = canViewModule(user, 'Offers')
+  const [items, setItems] = useState<Offer[]>([])
+  const [total, setTotal] = useState(merchant.offersCount)
+  const [loading, setLoading] = useState(canView)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!canView) return
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    listOffersApi({ merchantId: merchant.id, page: 1, pageSize: 10 })
+      .then((data) => {
+        if (cancelled) return
+        setItems(data.offers)
+        setTotal(data.pagination.total)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Unable to load offers')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [canView, merchant.id])
+
+  return (
+    <RelatedRecordsPanel
+      title="Offers"
+      totalLabel={`${total} offer${total === 1 ? '' : 's'}`}
+      loading={loading}
+      error={error}
+      emptyLabel="No offers linked to this merchant."
+      canView={canView}
+      permissionLabel="You do not have permission to view offers."
+      actionLabel="Manage offers"
+      onAction={() => navigate(`/merchants/${merchant.id}/offers`)}
+      hasRows={items.length > 0}
+    >
+      {items.map((offer) => (
+        <li key={offer.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3">
+          <div className="min-w-0">
+            <Link
+              to={`/offers/${offer.id}`}
+              className="text-[14px] font-semibold text-navy hover:underline"
+            >
+              {offer.title}
+            </Link>
+            <p className="mt-0.5 text-[12px] text-muted">
+              {offer.offerCode} · {offer.benefitLabel || offer.benefitValue}
+            </p>
+          </div>
+          <OfferStatusBadge status={offer.status} />
+        </li>
+      ))}
+    </RelatedRecordsPanel>
+  )
+}
+
+function MerchantRedemptionsTab({ merchant }: { merchant: Merchant }) {
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const canView = canViewModule(user, 'Redemptions')
+  const [items, setItems] = useState<Redemption[]>([])
+  const [total, setTotal] = useState(merchant.redeemedCount)
+  const [loading, setLoading] = useState(canView)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!canView) return
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    listRedemptionsApi({ merchantId: merchant.id, page: 1, pageSize: 10 })
+      .then((data) => {
+        if (cancelled) return
+        setItems(data.redemptions)
+        setTotal(data.pagination.total)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Unable to load redemptions')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [canView, merchant.id])
+
+  return (
+    <RelatedRecordsPanel
+      title="Redemptions"
+      totalLabel={`${total.toLocaleString()} redemption${total === 1 ? '' : 's'}`}
+      loading={loading}
+      error={error}
+      emptyLabel="No redemptions recorded for this merchant."
+      canView={canView}
+      permissionLabel="You do not have permission to view redemptions."
+      actionLabel="View all redemptions"
+      onAction={() => navigate(`/redemptions?merchantId=${merchant.id}`)}
+      hasRows={items.length > 0}
+    >
+      {items.map((row) => (
+        <li key={row.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3">
+          <div className="min-w-0">
+            <Link
+              to={`/redemptions/${row.id}`}
+              className="text-[14px] font-semibold text-navy hover:underline"
+            >
+              {row.redemptionCode}
+            </Link>
+            <p className="mt-0.5 text-[12px] text-muted">
+              {row.memberName} · {row.offerTitle} · {formatDateTime(row.redeemedAt)}
+            </p>
+          </div>
+          <RedemptionStatusBadge status={row.status} />
+        </li>
+      ))}
+    </RelatedRecordsPanel>
+  )
+}
+
+function MerchantReviewsTab({ merchant }: { merchant: Merchant }) {
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const canView = canViewModule(user, 'Reviews')
+  const [items, setItems] = useState<ReviewItem[]>([])
+  const [total, setTotal] = useState(merchant.ratingsCount)
+  const [loading, setLoading] = useState(canView)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!canView) return
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    listReviewsApi({ merchantId: merchant.id, page: 1, pageSize: 10 })
+      .then((data) => {
+        if (cancelled) return
+        setItems(data.reviews)
+        setTotal(data.pagination.total)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Unable to load reviews')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [canView, merchant.id])
+
+  return (
+    <RelatedRecordsPanel
+      title="Reviews"
+      totalLabel={`${total} review${total === 1 ? '' : 's'} · average ${merchant.rating.toFixed(1)}`}
+      loading={loading}
+      error={error}
+      emptyLabel="No reviews for this merchant."
+      canView={canView}
+      permissionLabel="You do not have permission to view reviews."
+      actionLabel="View all reviews"
+      onAction={() => navigate(`/reviews?merchantId=${merchant.id}`)}
+      hasRows={items.length > 0}
+    >
+      {items.map((row) => (
+        <li key={row.id} className="px-4 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <Link
+              to={`/reviews/${row.id}`}
+              className="text-[14px] font-semibold text-navy hover:underline"
+            >
+              {row.memberName} · {row.rating.toFixed(1)}
+            </Link>
+            <ReviewStatusBadge status={row.status} />
+          </div>
+          {row.text ? <p className="mt-1 text-[12px] text-muted">{row.text}</p> : null}
+        </li>
+      ))}
+    </RelatedRecordsPanel>
+  )
+}
+
+function MerchantMembersTab({ merchant }: { merchant: Merchant }) {
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const canView = canViewModule(user, 'Members')
+  const [items, setItems] = useState<Member[]>([])
+  const [total, setTotal] = useState(merchant.membersReached)
+  const [loading, setLoading] = useState(canView)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!canView) return
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    listMembersApi({ merchantId: merchant.id, page: 1, pageSize: 10 })
+      .then((data) => {
+        if (cancelled) return
+        setItems(data.members)
+        setTotal(data.pagination.total)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Unable to load members')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [canView, merchant.id])
+
+  return (
+    <RelatedRecordsPanel
+      title="Members reached"
+      totalLabel={`${total.toLocaleString()} member${total === 1 ? '' : 's'} who redeemed here`}
+      loading={loading}
+      error={error}
+      emptyLabel="No members have redeemed at this merchant yet."
+      canView={canView}
+      permissionLabel="You do not have permission to view members."
+      actionLabel="View all members"
+      onAction={() => navigate(`/members?merchantId=${merchant.id}`)}
+      hasRows={items.length > 0}
+    >
+      {items.map((row) => (
+        <li key={row.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3">
+          <div className="min-w-0">
+            <Link
+              to={`/members/${row.id}`}
+              className="text-[14px] font-semibold text-navy hover:underline"
+            >
+              {row.fullName}
+            </Link>
+            <p className="mt-0.5 text-[12px] text-muted">
+              {row.memberCode} · {row.email} · joined {formatDate(row.joinedAt)}
+            </p>
+          </div>
+          <MemberStatusBadge status={row.status} />
+        </li>
+      ))}
+    </RelatedRecordsPanel>
+  )
+}
+
+function RelatedRecordsPanel({
   title,
-  body,
+  totalLabel,
+  loading,
+  error,
+  emptyLabel,
+  canView,
+  permissionLabel,
   actionLabel,
   onAction,
+  hasRows,
+  children,
 }: {
   title: string
-  body: string
-  actionLabel?: string
-  onAction?: () => void
+  totalLabel: string
+  loading: boolean
+  error: string | null
+  emptyLabel: string
+  canView: boolean
+  permissionLabel: string
+  actionLabel: string
+  onAction: () => void
+  hasRows: boolean
+  children: ReactNode
 }) {
   return (
-    <div className="rounded-xl border border-border bg-white px-5 py-8 text-center">
-      <h2 className="text-[16px] font-bold text-navy">{title}</h2>
-      <p className="mx-auto mt-2 max-w-lg text-[13px] text-muted">{body}</p>
-      {actionLabel && onAction ? (
-        <button
-          type="button"
-          onClick={onAction}
-          className="mt-4 inline-flex h-9 items-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary"
-        >
-          {actionLabel}
-        </button>
-      ) : null}
-    </div>
+    <section className="rounded-xl border border-border bg-white">
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-[16px] font-bold text-navy">{title}</h2>
+          <p className="mt-0.5 text-[12px] text-muted">{totalLabel}</p>
+        </div>
+        {canView ? (
+          <button
+            type="button"
+            onClick={onAction}
+            className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary"
+          >
+            {actionLabel}
+          </button>
+        ) : null}
+      </div>
+      {!canView ? (
+        <p className="px-4 py-8 text-center text-[13px] text-muted">{permissionLabel}</p>
+      ) : loading ? (
+        <p className="px-4 py-8 text-center text-[13px] text-muted">Loading…</p>
+      ) : error ? (
+        <p className="px-4 py-8 text-center text-[13px] text-action">{error}</p>
+      ) : !hasRows ? (
+        <p className="px-4 py-8 text-center text-[13px] text-muted">{emptyLabel}</p>
+      ) : (
+        <ul className="divide-y divide-border">{children}</ul>
+      )}
+    </section>
   )
 }

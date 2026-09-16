@@ -114,8 +114,14 @@ export function inviteAdminUserApi(input: {
   fullName: string
   email: string
   role: AdminRole
-}): Promise<AdminUser> {
-  return request<AdminUser>(
+}): Promise<
+  AdminUser & {
+    emailSent: boolean
+    emailConfigured: boolean
+    inviteUrl: string
+  }
+> {
+  return request(
     '/api/admin-users/invite',
     { method: 'POST', body: JSON.stringify(input) },
     'Unable to invite admin user',

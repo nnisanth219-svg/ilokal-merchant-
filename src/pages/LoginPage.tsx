@@ -6,7 +6,7 @@ export function LoginPage() {
   const [authError, setAuthError] = useState<AuthErrorState | null>(null)
 
   return (
-    <main className="min-h-screen w-full overflow-x-hidden bg-white md:h-screen md:overflow-hidden">
+    <main className="min-h-dvh w-full overflow-x-hidden bg-white md:h-dvh md:overflow-hidden">
       <LoginCard
         authError={authError}
         onAuthError={setAuthError}

@@ -116,7 +116,7 @@ export function ReviewDetailPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 bg-navy px-4 py-5 text-white sm:px-6 sm:py-6">
         <p className="text-[12px] text-white/65">
           <Link to="/reviews" className="hover:text-white">
@@ -147,7 +147,7 @@ export function ReviewDetailPage() {
             <button
               type="button"
               onClick={() => navigate('/reviews')}
-              className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+              className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
             >
               Back
             </button>
@@ -156,14 +156,14 @@ export function ReviewDetailPage() {
                 <button
                   type="button"
                   onClick={() => void handleMarkReviewed()}
-                  className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                  className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
                 >
                   Mark as reviewed
                 </button>
                 <button
                   type="button"
                   onClick={() => void handleHide()}
-                  className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                  className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
                 >
                   Hide
                 </button>
@@ -173,7 +173,7 @@ export function ReviewDetailPage() {
               <button
                 type="button"
                 onClick={() => setConfirmDelete(true)}
-                className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
+                className="inline-flex h-10 min-h-[40px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
               >
                 Delete
               </button>

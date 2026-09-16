@@ -64,6 +64,7 @@ export function EditMerchantPage() {
       mode="edit"
       merchant={merchant}
       initialValues={merchantToFormValues(merchant)}
+      onSaveDraft={async (values) => updateMerchantApi(merchant.id, values)}
       onSubmit={async (values) => {
         await updateMerchantApi(merchant.id, values)
         navigate(`/merchants/${merchant.id}`)

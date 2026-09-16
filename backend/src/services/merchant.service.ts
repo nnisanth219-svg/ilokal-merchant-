@@ -10,6 +10,7 @@ import type {
   MerchantWriteInput,
 } from '../types/merchant.js'
 import { AppError } from '../utils/errors.js'
+import { parseMerchantWriteBody } from '../validation/merchant.validation.js'
 
 function slugify(value: string): string {
   return value
@@ -502,4 +503,45 @@ export async function bulkChangeMerchantCategory(
     data: { category: resolved.name, categoryId: resolved.id },
   })
   return result.count
+}
+
+export interface MerchantImportResult {
+  created: number
+  failed: { row: number; businessName: string; message: string }[]
+}
+
+export async function importMerchants(
+  rows: unknown[],
+  actorName: string,
+): Promise<MerchantImportResult> {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new AppError(400, 'CSV import requires at least one merchant row')
+  }
+  if (rows.length > 500) {
+    throw new AppError(400, 'CSV import is limited to 500 rows at a time')
+  }
+
+  const failed: MerchantImportResult['failed'] = []
+  let created = 0
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index]
+    try {
+      const input = parseMerchantWriteBody(row, false)
+      await createMerchant(input, actorName)
+      created += 1
+    } catch (error) {
+      const businessName =
+        row && typeof row === 'object' && 'businessName' in row && typeof row.businessName === 'string'
+          ? row.businessName
+          : ''
+      failed.push({
+        row: index + 1,
+        businessName,
+        message: error instanceof Error ? error.message : 'Unable to import row',
+      })
+    }
+  }
+
+  return { created, failed }
 }

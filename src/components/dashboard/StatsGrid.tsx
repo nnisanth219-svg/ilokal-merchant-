@@ -13,7 +13,7 @@ export function StatsGrid() {
   const { data, loading, error } = useDashboardStats()
 
   return (
-    <section aria-label="Key metrics" className="flex flex-col gap-3">
+    <section aria-label="Key metrics" className="flex shrink-0 flex-col gap-3">
       {error ? (
         <p className="rounded-lg border border-coral/20 bg-coral/5 px-3 py-2 text-[13px] text-coral">
           Unable to load statistics

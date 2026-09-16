@@ -9,7 +9,7 @@ export function Sidebar() {
   return (
     <aside
       className={[
-        'fixed inset-y-0 left-0 z-50 flex h-screen w-[230px] shrink-0 flex-col bg-navy transition-transform duration-200 ease-out',
+        'fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(230px,85vw)] max-w-[230px] shrink-0 flex-col bg-navy pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] transition-transform duration-200 ease-out',
         'lg:static lg:translate-x-0',
         open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
       ].join(' ')}

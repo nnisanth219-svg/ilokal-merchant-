@@ -53,7 +53,7 @@ export function SidebarUser() {
         type="button"
         onClick={handleLogout}
         disabled={loggingOut}
-        className="mt-3 w-full rounded-lg border border-white/15 px-3 py-2 text-left text-[13px] font-medium text-[#9EB0C7] transition hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-3 inline-flex h-10 min-h-[40px] w-full items-center rounded-lg border border-white/15 px-3 text-left text-[13px] font-medium text-[#9EB0C7] transition hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {loggingOut ? 'Signing out…' : 'Log out'}
       </button>

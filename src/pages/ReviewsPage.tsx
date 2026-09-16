@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { ReviewStatusBadge } from '../components/reviews/ReviewStatusBadge'
 import {
@@ -52,6 +52,7 @@ function stars(rating: number): string {
 
 export function ReviewsPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const canEdit = canEditInModule(user, 'Reviews')
   const canDelete = canDeleteInModule(user, 'Reviews')
@@ -77,7 +78,7 @@ export function ReviewsPage() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [rating, setRating] = useState('all')
-  const [merchant, setMerchant] = useState('all')
+  const [merchant, setMerchant] = useState(() => searchParams.get('merchantId') || 'all')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [dateFilter, setDateFilter] = useState<DateFilter>('any')
   const [page, setPage] = useState(1)
@@ -91,6 +92,12 @@ export function ReviewsPage() {
     const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
     return () => window.clearTimeout(timer)
   }, [search])
+
+  const urlMerchant = searchParams.get('merchantId') || 'all'
+  useEffect(() => {
+    setMerchant(urlMerchant)
+    setPage(1)
+  }, [urlMerchant])
 
   const loadReviews = useCallback(async () => {
     setLoading(true)
@@ -272,7 +279,7 @@ export function ReviewsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="min-w-0">
           <h1 className="text-[18px] font-bold tracking-[-0.02em] text-navy">Reviews</h1>
@@ -305,7 +312,7 @@ export function ReviewsPage() {
                   setPage(1)
                 }}
                 placeholder="Search by member, merchant or review text"
-                className="h-[38px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
+                className="h-10 min-h-[40px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -336,7 +343,13 @@ export function ReviewsPage() {
                   setMerchant(v)
                   setPage(1)
                 }}
-                options={[{ value: 'all', label: 'All' }, ...merchantOptions]}
+                options={[
+                  { value: 'all', label: 'All' },
+                  ...merchantOptions,
+                  ...(merchant !== 'all' && !merchantOptions.some((o) => o.value === merchant)
+                    ? [{ value: merchant, label: 'Selected merchant' }]
+                    : []),
+                ]}
               />
               <FilterPill
                 label="Status"
@@ -395,7 +408,7 @@ export function ReviewsPage() {
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
           <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overscroll-x-contain">
               <table className="min-w-[1040px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">

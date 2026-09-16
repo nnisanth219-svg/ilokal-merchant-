@@ -1,4 +1,4 @@
-export type SubscriptionStatus = 'active' | 'expired' | 'suspended'
+export type SubscriptionStatus = 'active' | 'expired' | 'suspended' | 'cancelled'
 export type SubscriptionPlan = 'Monthly' | 'Annual'
 export type BillingCycle = 'Monthly' | 'Annual'
 
@@ -38,6 +38,7 @@ export const SUBSCRIPTION_STATUS_FILTERS: {
   { value: 'active', label: 'Active' },
   { value: 'expired', label: 'Expired' },
   { value: 'suspended', label: 'Suspended' },
+  { value: 'cancelled', label: 'Cancelled' },
 ]
 
 export const SUBSCRIPTION_PLAN_FILTERS: {

@@ -5,7 +5,9 @@ import {
   bulkStatusHandler,
   createMerchantHandler,
   deleteMerchantHandler,
+  geocodeMerchantHandler,
   getMerchantHandler,
+  importMerchantsHandler,
   listMerchantsHandler,
   restoreMerchantHandler,
   updateMerchantHandler,
@@ -20,6 +22,19 @@ merchantRouter.use(requireAuth)
 
 merchantRouter.get('/', requirePermission('Merchants', 'view'), listMerchantsHandler)
 merchantRouter.post('/', requirePermission('Merchants', 'create'), createMerchantHandler)
+merchantRouter.post(
+  '/import',
+  requirePermission('Merchants', 'create'),
+  importMerchantsHandler,
+)
+merchantRouter.post(
+  '/geocode',
+  requireAnyPermission([
+    { module: 'Merchants', action: 'create' },
+    { module: 'Merchants', action: 'edit' },
+  ]),
+  geocodeMerchantHandler,
+)
 merchantRouter.post(
   '/bulk/status',
   requireAnyPermission([

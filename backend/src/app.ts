@@ -47,6 +47,10 @@ export function createApp() {
       health: '/api/health',
       auth: {
         login: 'POST /api/auth/login',
+        forgotPassword: 'POST /api/auth/forgot-password',
+        resetPassword: 'POST /api/auth/reset-password',
+        inviteInfo: 'GET /api/auth/invite-info',
+        acceptInvite: 'POST /api/auth/accept-invite',
         me: 'GET /api/auth/me',
         logout: 'POST /api/auth/logout',
       },
@@ -58,6 +62,8 @@ export function createApp() {
       merchants: {
         list: 'GET /api/merchants',
         create: 'POST /api/merchants',
+        import: 'POST /api/merchants/import',
+        geocode: 'POST /api/merchants/geocode',
         detail: 'GET /api/merchants/:id',
         update: 'PATCH /api/merchants/:id',
         status: 'PATCH /api/merchants/:id/status',
@@ -76,6 +82,7 @@ export function createApp() {
       members: {
         list: 'GET /api/members',
         create: 'POST /api/members',
+        broadcast: 'POST /api/members/broadcast',
         detail: 'GET /api/members/:id',
         update: 'PATCH /api/members/:id',
         status: 'PATCH /api/members/:id/status',

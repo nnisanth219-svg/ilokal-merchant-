@@ -14,7 +14,7 @@ export function LoginCard({
   onAuthErrorClear,
 }: LoginCardProps) {
   return (
-    <div className="flex min-h-screen w-full flex-col md:h-full md:min-h-0 md:flex-row">
+    <div className="flex min-h-dvh w-full flex-col md:h-full md:min-h-0 md:flex-row">
       <BrandPanel />
       <LoginPanel
         authError={authError}

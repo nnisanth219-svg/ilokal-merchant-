@@ -12,8 +12,11 @@ import { CreateOfferPage } from './pages/CreateOfferPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { EditMerchantPage } from './pages/EditMerchantPage'
 import { EditOfferPage } from './pages/EditOfferPage'
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { InviteAdminPage } from './pages/InviteAdminPage'
 import { LoginPage } from './pages/LoginPage'
+import { ResetPasswordPage } from './pages/ResetPasswordPage'
+import { AcceptInvitePage } from './pages/AcceptInvitePage'
 import { MemberDetailPage } from './pages/MemberDetailPage'
 import { MembersPage } from './pages/MembersPage'
 import { MerchantDetailPage } from './pages/MerchantDetailPage'
@@ -36,6 +39,9 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/login/forgot" element={<ForgotPasswordPage />} />
+          <Route path="/login/reset" element={<ResetPasswordPage />} />
+          <Route path="/login/accept-invite" element={<AcceptInvitePage />} />
 
           <Route element={<ProtectedRoute />}>
             <Route element={<DashboardLayout />}>

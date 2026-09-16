@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { ColumnPicker } from '../components/cms/ColumnPicker'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { OfferStatusBadge } from '../components/offers/OfferStatusBadge'
 import {
@@ -8,6 +9,7 @@ import {
   type ViewportMenuItem,
 } from '../components/ui/ViewportAwareMenu'
 import { useAuth } from '../context/AuthContext'
+import { useColumnVisibility } from '../hooks/useColumnVisibility'
 import {
   OFFER_CATEGORIES,
   OFFER_STATUS_FILTERS,
@@ -31,12 +33,15 @@ import {
   canEditInModule,
 } from '../types/auth'
 import type { Offer, OfferStatus, OfferType } from '../types/offer'
+import { downloadCsv } from '../utils/csv'
+import { collectAllPages } from '../utils/paginate'
 
 const PAGE_SIZE = 25
 
 type StatusFilter = OfferStatus | 'all'
 type TypeFilter = OfferType | 'all'
 type DateFilter = 'any' | '30d' | '90d' | 'year'
+type OfferColumn = 'merchant' | 'category' | 'benefit' | 'validity' | 'redemptions' | 'status'
 
 function SearchIcon() {
   return (
@@ -55,31 +60,9 @@ function ChevronDown() {
   )
 }
 
-function escapeCsv(value: string): string {
-  if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`
-  return value
-}
-
-function downloadOffersCsv(offers: Offer[]): void {
-  const lines = [
-    ['title', 'code', 'merchant', 'status', 'redeemedCount'].join(','),
-    ...offers.map((o) =>
-      [o.title, o.offerCode, o.merchantName, o.status, String(o.redeemedCount)]
-        .map(escapeCsv)
-        .join(','),
-    ),
-  ]
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'offers.csv'
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
 export function OffersPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const canEdit = canEditInModule(user, 'Offers')
   const canDelete = canDeleteInModule(user, 'Offers')
@@ -105,8 +88,8 @@ export function OffersPage() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
-  const [merchant, setMerchant] = useState('all')
-  const [category, setCategory] = useState('all')
+  const [merchant, setMerchant] = useState(() => searchParams.get('merchantId') || 'all')
+  const [category, setCategory] = useState(() => searchParams.get('category') || 'all')
   const [offerType, setOfferType] = useState<TypeFilter>('all')
   const [dateFilter, setDateFilter] = useState<DateFilter>('any')
   const [includeDeleted, setIncludeDeleted] = useState(false)
@@ -117,11 +100,28 @@ export function OffersPage() {
   const [confirmDelete, setConfirmDelete] = useState<Offer | null>(null)
   const [confirmRestore, setConfirmRestore] = useState<Offer | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState<'activate' | 'pause' | 'delete' | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const { visible, setColumnVisible } = useColumnVisibility<OfferColumn>('ilokal.columns.offers', {
+    merchant: true,
+    category: true,
+    benefit: true,
+    validity: true,
+    redemptions: true,
+    status: true,
+  })
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
     return () => window.clearTimeout(timer)
   }, [search])
+
+  const urlMerchant = searchParams.get('merchantId') || 'all'
+  const urlCategory = searchParams.get('category') || 'all'
+  useEffect(() => {
+    setMerchant(urlMerchant)
+    setCategory(urlCategory)
+    setPage(1)
+  }, [urlMerchant, urlCategory])
 
   useEffect(() => {
     let cancelled = false
@@ -301,6 +301,45 @@ export function OffersPage() {
     })
   }
 
+  async function handleExport(): Promise<void> {
+    try {
+      setError(null)
+      setExporting(true)
+      const all = await collectAllPages(async (page, pageSize) => {
+        const data = await listOffersApi({
+          page,
+          pageSize,
+          search: debouncedSearch,
+          status,
+          merchantId: merchant,
+          category,
+          offerType,
+          date: dateFilter,
+          includeDeleted: includeDeleted || status === 'deleted',
+        })
+        return { items: data.offers, totalPages: data.pagination.totalPages }
+      })
+      downloadCsv(
+        'offers.csv',
+        ['title', 'code', 'merchant', 'category', 'benefit', 'validity', 'status', 'redeemedCount'],
+        all.map((offer) => [
+          offer.title,
+          offer.offerCode,
+          offer.merchantName,
+          offer.category,
+          offer.benefitLabel,
+          offer.validityLabel,
+          offer.status,
+          offer.redeemedCount,
+        ]),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to export offers')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   async function runBulk(action: 'activate' | 'pause' | 'delete'): Promise<void> {
     try {
       setError(null)
@@ -317,7 +356,7 @@ export function OffersPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -331,7 +370,7 @@ export function OffersPage() {
           {canCreate ? (
             <Link
               to="/offers/create"
-              className="inline-flex h-[38px] min-h-[38px] w-full items-center justify-center rounded-lg bg-action px-4 text-[13px] font-semibold text-white transition hover:bg-[#c82027] sm:w-auto"
+              className="inline-flex h-10 min-h-[40px] w-full items-center justify-center rounded-lg bg-action px-4 text-[13px] font-semibold text-white transition hover:bg-[#c82027] sm:w-auto"
             >
               + New offer
             </Link>
@@ -361,7 +400,7 @@ export function OffersPage() {
                   setPage(1)
                 }}
                 placeholder="Search by offer name or merchant"
-                className="h-[38px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
+                className="h-10 min-h-[40px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -380,7 +419,7 @@ export function OffersPage() {
                 displayValue={
                   merchant === 'all'
                     ? 'All merchants'
-                    : merchants.find((m) => m.id === merchant)?.name ?? 'All merchants'
+                    : merchants.find((m) => m.id === merchant)?.name ?? 'Selected merchant'
                 }
                 onChange={(v) => {
                   setMerchant(v)
@@ -389,6 +428,9 @@ export function OffersPage() {
                 options={[
                   { value: 'all', label: 'All merchants' },
                   ...merchants.map((m) => ({ value: m.id, label: m.name })),
+                  ...(merchant !== 'all' && !merchants.some((m) => m.id === merchant)
+                    ? [{ value: merchant, label: 'Selected merchant' }]
+                    : []),
                 ]}
               />
               <FilterPill
@@ -402,6 +444,10 @@ export function OffersPage() {
                 options={[
                   { value: 'all', label: 'All categories' },
                   ...OFFER_CATEGORIES.map((c) => ({ value: c, label: c })),
+                  ...(category !== 'all' &&
+                  !(OFFER_CATEGORIES as readonly string[]).includes(category)
+                    ? [{ value: category, label: category }]
+                    : []),
                 ]}
               />
               <FilterPill
@@ -444,17 +490,24 @@ export function OffersPage() {
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => downloadOffersCsv(pageItems)}
-              className="inline-flex h-[38px] items-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page"
+              onClick={() => void handleExport()}
+              disabled={exporting}
+              className="inline-flex h-10 min-h-[40px] items-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page disabled:opacity-60"
             >
-              Export
+              {exporting ? 'Exporting…' : 'Export'}
             </button>
-            <button
-              type="button"
-              className="inline-flex h-[38px] items-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page"
-            >
-              Columns
-            </button>
+            <ColumnPicker
+              columns={[
+                { key: 'merchant', label: 'Merchant' },
+                { key: 'category', label: 'Category' },
+                { key: 'benefit', label: 'Benefit' },
+                { key: 'validity', label: 'Validity' },
+                { key: 'redemptions', label: 'Redemptions' },
+                { key: 'status', label: 'Status' },
+              ]}
+              visible={visible}
+              onChange={setColumnVisible}
+            />
           </div>
         </div>
 
@@ -496,7 +549,7 @@ export function OffersPage() {
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
           <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overscroll-x-contain">
               <table className="min-w-[1080px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">
@@ -510,12 +563,12 @@ export function OffersPage() {
                       />
                     </th>
                     <Th>Offer</Th>
-                    <Th>Merchant</Th>
-                    <Th>Category</Th>
-                    <Th>Benefit</Th>
-                    <Th>Validity</Th>
-                    <Th>Redemptions</Th>
-                    <Th>Status</Th>
+                    {visible.merchant ? <Th>Merchant</Th> : null}
+                    {visible.category ? <Th>Category</Th> : null}
+                    {visible.benefit ? <Th>Benefit</Th> : null}
+                    {visible.validity ? <Th>Validity</Th> : null}
+                    {visible.redemptions ? <Th>Redemptions</Th> : null}
+                    {visible.status ? <Th>Status</Th> : null}
                     <th className="w-12 px-3 py-3" />
                   </tr>
                 </thead>
@@ -555,24 +608,36 @@ export function OffersPage() {
                             <p className="mt-0.5 text-[12px] text-muted">{offer.offerCode}</p>
                           </button>
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
-                          {offer.merchantName}
-                        </td>
-                        <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
-                          {offer.category}
-                        </td>
-                        <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
-                          {offer.benefitLabel}
-                        </td>
-                        <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
-                          {offer.validityLabel}
-                        </td>
-                        <td className="px-4 py-3.5 align-middle text-[13px] tabular-nums text-navy">
-                          {offer.redeemedCount.toLocaleString('en-US')} redeemed
-                        </td>
-                        <td className="px-4 py-3.5 align-middle">
-                          <OfferStatusBadge status={offer.status} />
-                        </td>
+                        {visible.merchant ? (
+                          <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
+                            {offer.merchantName}
+                          </td>
+                        ) : null}
+                        {visible.category ? (
+                          <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
+                            {offer.category}
+                          </td>
+                        ) : null}
+                        {visible.benefit ? (
+                          <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
+                            {offer.benefitLabel}
+                          </td>
+                        ) : null}
+                        {visible.validity ? (
+                          <td className="px-4 py-3.5 align-middle text-[13px] text-navy">
+                            {offer.validityLabel}
+                          </td>
+                        ) : null}
+                        {visible.redemptions ? (
+                          <td className="px-4 py-3.5 align-middle text-[13px] tabular-nums text-navy">
+                            {offer.redeemedCount.toLocaleString('en-US')} redeemed
+                          </td>
+                        ) : null}
+                        {visible.status ? (
+                          <td className="px-4 py-3.5 align-middle">
+                            <OfferStatusBadge status={offer.status} />
+                          </td>
+                        ) : null}
                         <td className="px-3 py-3.5 align-middle">
                           <RowActionButton
                             label={`Actions for ${offer.title}`}
@@ -585,7 +650,18 @@ export function OffersPage() {
                   })}
                   {pageItems.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
+                      <td
+                        colSpan={
+                          3 +
+                          Number(visible.merchant) +
+                          Number(visible.category) +
+                          Number(visible.benefit) +
+                          Number(visible.validity) +
+                          Number(visible.redemptions) +
+                          Number(visible.status)
+                        }
+                        className="px-4 py-14 text-center text-[13px] text-muted"
+                      >
                         {loading ? 'Loading offers…' : 'No offers match your filters.'}
                       </td>
                     </tr>
@@ -748,7 +824,7 @@ function FilterPill({
 }) {
   const shown = displayValue ?? options.find((o) => o.value === value)?.label ?? value
   return (
-    <label className="relative inline-flex h-[38px] min-h-[38px] w-full cursor-pointer items-center gap-1 rounded-lg border border-border bg-white pl-3 pr-8 text-[13px] text-navy sm:w-auto">
+    <label className="relative inline-flex h-10 min-h-[40px] w-full cursor-pointer items-center gap-1 rounded-lg border border-border bg-white pl-3 pr-8 text-[13px] text-navy sm:w-auto">
       <span className="shrink-0 text-muted">{label}:</span>
       <span className="min-w-0 max-w-none truncate font-semibold sm:max-w-[140px]">{shown}</span>
       <span className="pointer-events-none absolute right-2.5 text-muted">

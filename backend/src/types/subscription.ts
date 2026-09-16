@@ -1,4 +1,4 @@
-export type SubscriptionStatusValue = 'active' | 'expired' | 'suspended'
+export type SubscriptionStatusValue = 'active' | 'expired' | 'suspended' | 'cancelled'
 
 export type SubscriptionPlanValue = 'Monthly' | 'Annual'
 

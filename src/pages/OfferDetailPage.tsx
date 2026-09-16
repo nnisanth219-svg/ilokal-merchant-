@@ -72,7 +72,7 @@ export function OfferDetailPage() {
   const isDeleted = offer.status === 'deleted'
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6 sm:py-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
           <div className="min-w-0">
@@ -98,7 +98,7 @@ export function OfferDetailPage() {
             {!isDeleted && canEdit ? (
               <Link
                 to={`/offers/${offer.id}/edit`}
-                className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
+                className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
               >
                 Edit
               </Link>
@@ -117,7 +117,7 @@ export function OfferDetailPage() {
                     }
                   })()
                 }}
-                className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
+                className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
               >
                 Restore
               </button>
@@ -136,7 +136,7 @@ export function OfferDetailPage() {
                     }
                   })()
                 }}
-                className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
+                className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
               >
                 {isPaused ? 'Activate' : 'Pause'}
               </button>
@@ -145,7 +145,7 @@ export function OfferDetailPage() {
               <button
                 type="button"
                 onClick={() => setConfirmDelete(true)}
-                className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
+                className="inline-flex h-10 min-h-[40px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
               >
                 Delete
               </button>

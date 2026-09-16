@@ -291,7 +291,7 @@ export async function updateSubscription(
 
 export async function updateSubscriptionStatus(
   id: string,
-  status: 'active' | 'expired' | 'suspended',
+  status: 'active' | 'expired' | 'suspended' | 'cancelled',
 ): Promise<SubscriptionDto> {
   const existing = await prisma.subscription.findUnique({ where: { id } })
   if (!existing) throw new AppError(404, 'Subscription not found')
@@ -341,7 +341,7 @@ export async function renewSubscription(id: string): Promise<SubscriptionDto> {
 
 export async function bulkUpdateSubscriptionStatus(
   ids: string[],
-  status: 'active' | 'expired' | 'suspended',
+  status: 'active' | 'expired' | 'suspended' | 'cancelled',
 ): Promise<number> {
   if (ids.length === 0) return 0
   const result = await prisma.subscription.updateMany({

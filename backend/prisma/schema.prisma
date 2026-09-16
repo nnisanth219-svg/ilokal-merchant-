@@ -311,6 +311,7 @@ enum SubscriptionStatus {
   active
   expired
   suspended
+  cancelled
 
   @@map("subscription_status")
 }

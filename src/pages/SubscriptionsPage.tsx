@@ -187,13 +187,17 @@ export function SubscriptionsPage() {
                 label: 'Suspend',
                 onClick: () => setConfirm({ type: 'suspend', item: activeItem }),
               },
-              {
-                id: 'cancel',
-                label: 'Cancel subscription',
-                destructive: true,
-                dividerBefore: true,
-                onClick: () => setConfirm({ type: 'cancel', item: activeItem }),
-              },
+              ...(activeItem.status === 'cancelled'
+                ? []
+                : [
+                    {
+                      id: 'cancel',
+                      label: 'Cancel subscription',
+                      destructive: true,
+                      dividerBefore: true,
+                      onClick: () => setConfirm({ type: 'cancel', item: activeItem }),
+                    },
+                  ]),
             ]
           : []),
       ]
@@ -234,8 +238,11 @@ export function SubscriptionsPage() {
     if (!confirm) return
     try {
       setError(null)
-      if (confirm.type === 'suspend' || confirm.type === 'cancel') {
+      if (confirm.type === 'suspend') {
         await updateSubscriptionStatusApi(confirm.item.id, 'suspended')
+      }
+      if (confirm.type === 'cancel') {
+        await updateSubscriptionStatusApi(confirm.item.id, 'cancelled')
       }
       setConfirm(null)
       closeMenu()
@@ -251,9 +258,8 @@ export function SubscriptionsPage() {
     try {
       setError(null)
       if (action === 'activate') await bulkUpdateSubscriptionStatusApi(selectedIds, 'active')
-      if (action === 'suspend' || action === 'cancel') {
-        await bulkUpdateSubscriptionStatusApi(selectedIds, 'suspended')
-      }
+      if (action === 'suspend') await bulkUpdateSubscriptionStatusApi(selectedIds, 'suspended')
+      if (action === 'cancel') await bulkUpdateSubscriptionStatusApi(selectedIds, 'cancelled')
       setSelectedIds([])
       setBulkConfirm(null)
       await loadSubscriptions()
@@ -264,7 +270,7 @@ export function SubscriptionsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="min-w-0">
           <h1 className="text-[18px] font-bold tracking-[-0.02em] text-navy">Subscriptions</h1>
@@ -297,7 +303,7 @@ export function SubscriptionsPage() {
                   setPage(1)
                 }}
                 placeholder="Search by member, email or subscription ID"
-                className="h-[38px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
+                className="h-10 min-h-[40px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -375,7 +381,7 @@ export function SubscriptionsPage() {
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
           <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overscroll-x-contain">
               <table className="min-w-[1100px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">
@@ -414,7 +420,9 @@ export function SubscriptionsPage() {
                         className={[
                           'border-b border-border last:border-b-0',
                           selected ? 'bg-[#F7F9FC]' : 'bg-white hover:bg-[#FAFAF8]',
-                          row.status === 'suspended' || row.status === 'expired'
+                          row.status === 'suspended' ||
+                          row.status === 'expired' ||
+                          row.status === 'cancelled'
                             ? 'opacity-70'
                             : '',
                         ].join(' ')}
@@ -539,7 +547,7 @@ export function SubscriptionsPage() {
         title="Cancel subscription?"
         message={
           confirm
-            ? `Cancel the subscription for ${confirm.item.memberName}? This will mark it as suspended.`
+            ? `Cancel the subscription for ${confirm.item.memberName}? This will mark it as cancelled.`
             : ''
         }
         confirmLabel="Cancel subscription"

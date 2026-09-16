@@ -3,6 +3,7 @@ import {
   bulkDeleteHandler,
   bulkRestoreHandler,
   bulkStatusHandler,
+  broadcastMembersHandler,
   createMemberHandler,
   deleteMemberHandler,
   getMemberHandler,
@@ -20,6 +21,14 @@ memberRouter.use(requireAuth)
 
 memberRouter.get('/', requirePermission('Members', 'view'), listMembersHandler)
 memberRouter.post('/', requirePermission('Members', 'create'), createMemberHandler)
+memberRouter.post(
+  '/broadcast',
+  requireAnyPermission([
+    { module: 'Members', action: 'manage' },
+    { module: 'Members', action: 'edit' },
+  ]),
+  broadcastMembersHandler,
+)
 memberRouter.post(
   '/bulk/status',
   requireAnyPermission([

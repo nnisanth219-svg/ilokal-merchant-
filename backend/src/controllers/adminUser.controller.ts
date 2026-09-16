@@ -14,6 +14,11 @@ import {
   updateRolePermissionMatrix,
 } from '../services/adminUser.service.js'
 import { recordAuditFromRequest } from '../services/auditLog.service.js'
+import {
+  createAdminInviteToken,
+  inviteUrlForToken,
+} from '../services/auth.service.js'
+import { isEmailConfigured, sendMail } from '../lib/mailer.js'
 import type {
   AdminRoleLabel,
   AdminUserListQuery,
@@ -178,18 +183,45 @@ export async function inviteAdminUserHandler(
   try {
     const input = parseInviteBody(req.body)
     const data = await inviteAdminUser(input)
+    const inviteToken = createAdminInviteToken(data.id, data.email)
+    const inviteUrl = inviteUrlForToken(inviteToken)
+    const emailConfigured = isEmailConfigured()
+    let emailSent = false
+    if (emailConfigured) {
+      try {
+        await sendMail({
+          to: data.email,
+          subject: 'You are invited to the iLokal admin portal',
+          text: `Hi ${data.fullName},\n\nYou have been invited to the iLokal admin portal as ${data.role}.\nSet your password using this link:\n\n${inviteUrl}\n\nThis link expires after a limited time.`,
+        })
+        emailSent = true
+      } catch {
+        emailSent = false
+      }
+    }
     await recordAuditFromRequest(req, {
       action: 'INVITE',
       module: 'Admin Users',
       entityId: data.id,
       entityLabel: data.fullName || data.email,
-      description: `Invited admin ${data.fullName || data.email}`,
+      description: emailSent
+        ? `Invited admin ${data.fullName || data.email}`
+        : `Created admin invitation for ${data.fullName || data.email} without sending email`,
       newValue: data.role,
     })
     res.status(201).json({
       success: true,
-      data,
-      message: 'Invitation recorded successfully',
+      data: {
+        ...data,
+        emailSent,
+        emailConfigured,
+        inviteUrl,
+      },
+      message: emailSent
+        ? 'Invitation email sent'
+        : emailConfigured
+          ? 'Admin created, but the invitation email could not be delivered'
+          : 'Admin created. Email delivery is not configured, so no invitation email was sent.',
     })
   } catch (error) {
     next(error)

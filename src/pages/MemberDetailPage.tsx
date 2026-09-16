@@ -108,7 +108,7 @@ export function MemberDetailPage() {
   const isDeleted = member.status === 'deleted'
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 bg-navy px-4 py-5 text-white sm:px-6 sm:py-6">
         <p className="text-[12px] text-white/65">
           <Link to="/members" className="hover:text-white">
@@ -148,7 +148,7 @@ export function MemberDetailPage() {
                 <button
                   type="button"
                   onClick={() => setConfirm('restore')}
-                  className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                  className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
                 >
                   Restore
                 </button>
@@ -159,7 +159,7 @@ export function MemberDetailPage() {
                   <button
                     type="button"
                     onClick={() => setConfirm('deactivate')}
-                    className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
+                    className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white hover:bg-white/15 sm:flex-none"
                   >
                     Deactivate
                   </button>
@@ -168,7 +168,7 @@ export function MemberDetailPage() {
                   <button
                     type="button"
                     onClick={() => setConfirm('delete')}
-                    className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
+                    className="inline-flex h-10 min-h-[40px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto"
                   >
                     Delete
                   </button>
@@ -297,7 +297,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={[
-        'shrink-0 whitespace-nowrap border-b-2 px-3 pb-2.5 text-[13px] font-semibold transition',
+        'inline-flex min-h-[40px] shrink-0 items-end whitespace-nowrap border-b-2 px-3 pb-2.5 text-[13px] font-semibold transition',
         active ? 'border-gold text-white' : 'border-transparent text-white/55 hover:text-white',
       ].join(' ')}
     >
@@ -339,7 +339,7 @@ function PurchasesSection({ member }: { member: Member }) {
       {member.purchases.length === 0 ? (
         <p className="px-5 py-10 text-center text-[13px] text-muted">No purchases yet.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overscroll-x-contain">
           <table className="min-w-[720px] w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-border bg-[#FAF9F6]">
@@ -393,7 +393,7 @@ function RedemptionsSection({ member }: { member: Member }) {
       {member.redemptions.length === 0 ? (
         <p className="px-5 py-10 text-center text-[13px] text-muted">No redemptions yet.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overscroll-x-contain">
           <table className="min-w-[720px] w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-border bg-[#FAF9F6]">

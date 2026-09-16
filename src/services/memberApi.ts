@@ -20,6 +20,7 @@ export interface MemberListParams {
   plan?: MembershipPlan | 'all'
   joined?: JoinedFilter
   includeDeleted?: boolean
+  merchantId?: string
 }
 
 export interface MemberListResponse {
@@ -90,6 +91,9 @@ export function listMembersApi(params: MemberListParams = {}): Promise<MemberLis
   if (params.plan && params.plan !== 'all') query.set('plan', params.plan)
   if (params.joined && params.joined !== 'any') query.set('joined', params.joined)
   if (params.includeDeleted) query.set('includeDeleted', 'true')
+  if (params.merchantId && params.merchantId !== 'all') {
+    query.set('merchantId', params.merchantId)
+  }
   return request<MemberListResponse>(
     `/api/members?${query.toString()}`,
     { method: 'GET' },
@@ -186,5 +190,22 @@ export function bulkRestoreMembersApi(ids: string[]): Promise<{ count: number }>
     '/api/members/bulk/restore',
     { method: 'POST', body: JSON.stringify({ ids }) },
     'Unable to restore members',
+  )
+}
+
+export function broadcastMembersApi(input: {
+  ids: string[]
+  subject: string
+  message: string
+}): Promise<{
+  emailConfigured: boolean
+  requested: number
+  sent: number
+  failed: number
+}> {
+  return request(
+    '/api/members/broadcast',
+    { method: 'POST', body: JSON.stringify(input) },
+    'Unable to send broadcast',
   )
 }

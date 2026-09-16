@@ -13,7 +13,7 @@ export function RedemptionsChart() {
   const maxValue = Math.max(...points.map((point) => point.value), 1)
 
   return (
-    <section className="flex h-full min-h-[320px] flex-col rounded-xl border border-border bg-white p-5">
+    <section className="flex min-h-[280px] flex-col rounded-xl border border-border bg-white p-5 lg:h-full lg:min-h-[320px]">
       <div className="mb-5 flex shrink-0 items-start justify-between gap-3">
         <h2 className="text-[16px] font-bold text-navy">Redemptions & sign-ups</h2>
         <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">

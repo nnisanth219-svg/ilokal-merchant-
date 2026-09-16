@@ -3,6 +3,7 @@ import {
   bulkRestoreMembers,
   bulkSoftDeleteMembers,
   bulkUpdateMemberStatus,
+  broadcastToMembers,
   createMember,
   getMemberById,
   listMembers,
@@ -56,6 +57,7 @@ function parseListQuery(req: Request): MemberListQuery {
         : 'any',
     includeDeleted:
       req.query.includeDeleted === 'true' || req.query.includeDeleted === '1',
+    merchantId: typeof req.query.merchantId === 'string' ? req.query.merchantId : undefined,
     sortBy:
       typeof req.query.sortBy === 'string'
         ? (req.query.sortBy as MemberListQuery['sortBy'])
@@ -264,6 +266,35 @@ export async function bulkRestoreHandler(
       metadata: { ids, count },
     })
     res.status(200).json({ success: true, data: { count } })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function broadcastMembersHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const ids = parseIds(req.body)
+    const subject = typeof req.body?.subject === 'string' ? req.body.subject : ''
+    const message = typeof req.body?.message === 'string' ? req.body.message : ''
+    const data = await broadcastToMembers(ids, subject, message)
+    await recordAuditFromRequest(req, {
+      action: 'BULK_UPDATE',
+      module: 'Members',
+      description: data.emailConfigured
+        ? `Broadcast to ${data.sent} member(s)`
+        : `Broadcast not sent; email delivery is not configured (${data.requested} recipient(s))`,
+      metadata: {
+        emailConfigured: data.emailConfigured,
+        requested: data.requested,
+        sent: data.sent,
+        failed: data.failed,
+      },
+    })
+    res.status(200).json({ success: true, data })
   } catch (error) {
     next(error)
   }

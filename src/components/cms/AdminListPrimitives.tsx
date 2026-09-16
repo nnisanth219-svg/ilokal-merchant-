@@ -48,9 +48,9 @@ export function FilterPill({
   onChange: (value: string) => void
 }) {
   return (
-    <label className="relative inline-flex h-[38px] min-h-[38px] items-center gap-1.5 rounded-lg border border-border bg-white pl-3 pr-2 text-[13px] text-navy">
+    <label className="relative inline-flex h-10 min-h-[40px] max-w-full items-center gap-1.5 rounded-lg border border-border bg-white pl-3 pr-2 text-[13px] text-navy">
       <span className="font-medium text-muted">{label}</span>
-      <span className="font-semibold">{displayValue ?? value}</span>
+      <span className="max-w-[9.5rem] truncate font-semibold sm:max-w-none">{displayValue ?? value}</span>
       <ChevronDown />
       <select
         value={value}

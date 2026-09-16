@@ -103,7 +103,7 @@ export function OfferForm({
       : merchants
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="flex min-h-16 shrink-0 flex-col gap-3 border-b border-border bg-white px-4 py-3 sm:px-6 md:flex-row md:items-center md:justify-between md:gap-4 md:py-0">
         <div className="min-w-0">
           <p className="text-[12px] text-muted">
@@ -123,7 +123,7 @@ export function OfferForm({
           <button
             type="button"
             onClick={() => navigate('/offers')}
-            className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
+            className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none"
           >
             Cancel
           </button>
@@ -131,7 +131,7 @@ export function OfferForm({
             type="button"
             disabled={submitting}
             onClick={() => void handleDraft()}
-            className="inline-flex h-9 min-h-[36px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none disabled:opacity-50"
+            className="inline-flex h-10 min-h-[40px] flex-1 items-center justify-center rounded-lg border border-border bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-page sm:flex-none disabled:opacity-50"
           >
             Save draft
           </button>
@@ -139,7 +139,7 @@ export function OfferForm({
             type="button"
             disabled={submitting}
             onClick={() => void handleSubmit()}
-            className="inline-flex h-9 min-h-[36px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto disabled:opacity-50"
+            className="inline-flex h-10 min-h-[40px] w-full items-center justify-center rounded-lg bg-action px-3.5 text-[13px] font-semibold text-white hover:bg-[#c82027] sm:w-auto disabled:opacity-50"
           >
             {mode === 'create' ? 'Create offer' : 'Save changes'}
           </button>

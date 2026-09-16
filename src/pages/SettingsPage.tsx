@@ -94,7 +94,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="min-w-0">
           <h1 className="text-[18px] font-bold tracking-[-0.02em] text-navy">Settings</h1>
@@ -547,7 +547,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={[
-        'shrink-0 whitespace-nowrap border-b-2 px-3 pb-2.5 text-[13px] font-semibold transition',
+        'inline-flex min-h-[40px] shrink-0 items-end whitespace-nowrap border-b-2 px-3 pb-2.5 text-[13px] font-semibold transition',
         active ? 'border-navy text-navy' : 'border-transparent text-muted hover:text-navy',
       ].join(' ')}
     >

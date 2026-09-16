@@ -1,5 +1,6 @@
 import type { Member, MembershipPlan, MemberStatus, Prisma } from '../../generated/prisma/client.js'
 import { prisma } from '../lib/prisma.js'
+import { isEmailConfigured, sendMail } from '../lib/mailer.js'
 import type {
   MemberDto,
   MemberListQuery,
@@ -112,6 +113,10 @@ function buildListWhere(query: MemberListQuery): Prisma.MemberWhereInput {
   if (query.joined && query.joined !== 'any') {
     const days = query.joined === '7d' ? 7 : query.joined === '30d' ? 30 : 90
     where.joinedAt = { gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) }
+  }
+
+  if (query.merchantId && query.merchantId !== 'all') {
+    where.redemptionRecords = { some: { merchantId: query.merchantId } }
   }
 
   if (query.search?.trim()) {
@@ -419,4 +424,55 @@ export async function bulkRestoreMembers(ids: string[]): Promise<number> {
     },
   })
   return result.count
+}
+
+export interface MemberBroadcastResult {
+  emailConfigured: boolean
+  requested: number
+  sent: number
+  failed: number
+}
+
+export async function broadcastToMembers(
+  ids: string[],
+  subject: string,
+  message: string,
+): Promise<MemberBroadcastResult> {
+  const cleanSubject = subject.trim()
+  const cleanMessage = message.trim()
+  if (!cleanSubject) throw new AppError(400, 'Broadcast subject is required')
+  if (!cleanMessage) throw new AppError(400, 'Broadcast message is required')
+  if (ids.length === 0) throw new AppError(400, 'Select at least one member')
+  if (ids.length > 500) throw new AppError(400, 'Broadcast is limited to 500 members at a time')
+
+  const emailConfigured = isEmailConfigured()
+  if (!emailConfigured) {
+    return { emailConfigured: false, requested: ids.length, sent: 0, failed: 0 }
+  }
+
+  const members = await prisma.member.findMany({
+    where: { id: { in: ids }, deletedAt: null },
+    select: { id: true, email: true, fullName: true },
+  })
+
+  let sent = 0
+  let failed = 0
+  for (const member of members) {
+    if (!member.email.trim()) {
+      failed += 1
+      continue
+    }
+    try {
+      await sendMail({
+        to: member.email,
+        subject: cleanSubject,
+        text: `Hi ${member.fullName},\n\n${cleanMessage}\n\n— iLokal`,
+      })
+      sent += 1
+    } catch {
+      failed += 1
+    }
+  }
+
+  return { emailConfigured: true, requested: members.length, sent, failed }
 }

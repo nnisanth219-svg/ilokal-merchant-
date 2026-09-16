@@ -42,7 +42,7 @@ export function PasswordField({
           type="button"
           onClick={onToggleVisibility}
           disabled={disabled}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-[13px] font-medium text-navy/70 transition hover:text-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy/30 disabled:opacity-60"
+          className="absolute right-1 top-1/2 inline-flex h-10 min-w-[44px] -translate-y-1/2 items-center justify-center px-2 text-[13px] font-medium text-navy/70 transition hover:text-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy/30 disabled:opacity-60"
           aria-label={showPassword ? 'Hide password' : 'Show password'}
         >
           {showPassword ? 'Hide' : 'Show'}

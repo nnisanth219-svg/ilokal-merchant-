@@ -12,7 +12,7 @@ export function LoginOptions({
   onForgotPassword,
 }: LoginOptionsProps) {
   return (
-    <div className="flex w-full items-center justify-between gap-3">
+    <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1">
       <label className="flex cursor-pointer items-center gap-2 select-none">
         <span className="relative inline-flex h-[16px] w-[16px] shrink-0 items-center justify-center">
           <input
@@ -53,7 +53,7 @@ export function LoginOptions({
         type="button"
         onClick={onForgotPassword}
         disabled={disabled}
-        className="text-[13px] font-medium text-coral-link transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral/30 disabled:opacity-60"
+        className="inline-flex min-h-[40px] items-center text-[13px] font-medium text-coral-link transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral/30 disabled:opacity-60"
       >
         Forgot password?
       </button>

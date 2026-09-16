@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { MemberStatusBadge } from '../components/members/MemberStatusBadge'
 import {
@@ -9,6 +9,7 @@ import {
 } from '../components/ui/ViewportAwareMenu'
 import { useAuth } from '../context/AuthContext'
 import {
+  broadcastMembersApi,
   bulkSoftDeleteMembersApi,
   bulkUpdateMemberStatusApi,
   listMembersApi,
@@ -17,6 +18,8 @@ import {
   updateMemberStatusApi,
   type MemberListResponse,
 } from '../services/memberApi'
+import { downloadCsv } from '../utils/csv'
+import { collectAllPages } from '../utils/paginate'
 import { canDeleteInModule, canEditInModule } from '../types/auth'
 import {
   MEMBER_PLAN_FILTERS,
@@ -66,6 +69,7 @@ function initials(name: string): string {
 
 export function MembersPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const canEdit = canEditInModule(user, 'Members')
   const canDelete = canDeleteInModule(user, 'Members')
@@ -92,6 +96,7 @@ export function MembersPage() {
   const [plan, setPlan] = useState<PlanFilter>('all')
   const [joined, setJoined] = useState<JoinedFilter>('any')
   const [includeDeleted, setIncludeDeleted] = useState(false)
+  const [merchantId, setMerchantId] = useState(() => searchParams.get('merchantId') || '')
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
@@ -103,11 +108,21 @@ export function MembersPage() {
   const [bulkConfirm, setBulkConfirm] = useState<'activate' | 'deactivate' | 'delete' | null>(
     null,
   )
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
+  const [broadcastSubject, setBroadcastSubject] = useState('')
+  const [broadcastMessage, setBroadcastMessage] = useState('')
+  const [busyAction, setBusyAction] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search), 300)
     return () => window.clearTimeout(timer)
   }, [search])
+
+  const urlMerchantId = searchParams.get('merchantId') || ''
+  useEffect(() => {
+    setMerchantId(urlMerchantId)
+    setPage(1)
+  }, [urlMerchantId])
 
   const loadMembers = useCallback(async () => {
     setLoading(true)
@@ -121,6 +136,7 @@ export function MembersPage() {
         plan,
         joined,
         includeDeleted: includeDeleted || status === 'deleted',
+        merchantId: merchantId || undefined,
       })
       setMembers(data.members)
       setSummary(data.summary)
@@ -131,7 +147,7 @@ export function MembersPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, debouncedSearch, status, plan, joined, includeDeleted])
+  }, [page, debouncedSearch, status, plan, joined, includeDeleted, merchantId])
 
   useEffect(() => {
     void loadMembers()
@@ -265,8 +281,95 @@ export function MembersPage() {
     }
   }
 
+  async function handleExport(): Promise<void> {
+    try {
+      setError(null)
+      setBusyAction('export')
+      const all = await collectAllPages(async (pageNum, pageSize) => {
+        const data = await listMembersApi({
+          page: pageNum,
+          pageSize,
+          search: debouncedSearch,
+          status,
+          plan,
+          joined,
+          includeDeleted: includeDeleted || status === 'deleted',
+          merchantId: merchantId || undefined,
+        })
+        return { items: data.members, totalPages: data.pagination.totalPages }
+      })
+      downloadCsv(
+        'members.csv',
+        ['memberCode', 'fullName', 'email', 'phone', 'city', 'plan', 'status', 'joinedAt'],
+        all.map((member) => [
+          member.memberCode,
+          member.fullName,
+          member.email,
+          member.phone,
+          member.city,
+          member.plan,
+          member.status,
+          member.joinedAt,
+        ]),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to export members')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function handleBroadcast(): Promise<void> {
+    try {
+      setError(null)
+      setBusyAction('broadcast')
+      let ids = selectedIds
+      if (ids.length === 0) {
+        const all = await collectAllPages(async (pageNum, pageSize) => {
+          const data = await listMembersApi({
+            page: pageNum,
+            pageSize,
+            search: debouncedSearch,
+            status,
+            plan,
+            joined,
+            includeDeleted: includeDeleted || status === 'deleted',
+            merchantId: merchantId || undefined,
+          })
+          return { items: data.members, totalPages: data.pagination.totalPages }
+        })
+        ids = all.map((member) => member.id)
+      }
+      const result = await broadcastMembersApi({
+        ids,
+        subject: broadcastSubject,
+        message: broadcastMessage,
+      })
+      setBroadcastOpen(false)
+      setBroadcastSubject('')
+      setBroadcastMessage('')
+      if (!result.emailConfigured) {
+        setError(
+          `Broadcast was not sent to ${result.requested} member(s) because email delivery is not configured.`,
+        )
+      } else if (result.sent === 0) {
+        setError('No broadcast emails were delivered.')
+      } else {
+        setError(
+          result.failed > 0
+            ? `Broadcast sent to ${result.sent} member(s); ${result.failed} failed.`
+            : `Broadcast sent to ${result.sent} member(s).`,
+        )
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to send broadcast')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -278,16 +381,21 @@ export function MembersPage() {
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <button
               type="button"
-              className="inline-flex h-[38px] min-h-[38px] items-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy transition hover:bg-page"
+              onClick={() => void handleExport()}
+              disabled={busyAction === 'export'}
+              className="inline-flex h-10 min-h-[40px] items-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy transition hover:bg-page disabled:opacity-60"
             >
-              Export CSV
+              {busyAction === 'export' ? 'Exporting…' : 'Export CSV'}
             </button>
-            <button
-              type="button"
-              className="inline-flex h-[38px] min-h-[38px] items-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white transition hover:bg-navy-secondary"
-            >
-              Send broadcast
-            </button>
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={() => setBroadcastOpen(true)}
+                className="inline-flex h-10 min-h-[40px] items-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white transition hover:bg-navy-secondary"
+              >
+                Send broadcast
+              </button>
+            ) : null}
           </div>
         </div>
       </header>
@@ -300,6 +408,11 @@ export function MembersPage() {
               {summary.total.toLocaleString()} total · {summary.active.toLocaleString()} active
             </span>
           </p>
+          {merchantId ? (
+            <p className="mt-1 text-[12px] text-muted">
+              Showing members who have redeemed at the selected merchant.
+            </p>
+          ) : null}
           {error ? <p className="mt-1 text-[12px] text-action">{error}</p> : null}
         </div>
 
@@ -317,7 +430,7 @@ export function MembersPage() {
                   setPage(1)
                 }}
                 placeholder="Search by name, email, phone or member ID"
-                className="h-[38px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
+                className="h-10 min-h-[40px] w-full rounded-lg border border-border bg-white py-2 pl-9 pr-3 text-[13px] text-navy outline-none placeholder:text-muted focus:border-navy focus:ring-2 focus:ring-navy/10"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -373,7 +486,7 @@ export function MembersPage() {
                   setPage(1)
                 }}
                 className={[
-                  'inline-flex h-[38px] min-h-[38px] items-center rounded-lg border border-border bg-white px-3 text-[12px] font-semibold transition hover:bg-page',
+                  'inline-flex h-10 min-h-[40px] items-center rounded-lg border border-border bg-white px-3 text-[12px] font-semibold transition hover:bg-page',
                   includeDeleted ? 'text-navy' : 'text-[#3B6FB6]',
                 ].join(' ')}
               >
@@ -409,7 +522,7 @@ export function MembersPage() {
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
           <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overscroll-x-contain">
               <table className="min-w-[1040px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">
@@ -623,6 +736,53 @@ export function MembersPage() {
         onCancel={() => setBulkConfirm(null)}
         onConfirm={() => void runBulk('delete')}
       />
+
+      {broadcastOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-xl border border-border bg-white p-6">
+            <h2 className="text-[18px] font-bold text-navy">Send broadcast</h2>
+            <p className="mt-2 text-[13px] text-muted">
+              {selectedIds.length > 0
+                ? `This will go to ${selectedIds.length} selected member(s).`
+                : 'This will go to every member in the current filtered list.'}
+            </p>
+            <label className="mt-4 block">
+              <span className="text-[12px] font-semibold text-navy">Subject</span>
+              <input
+                value={broadcastSubject}
+                onChange={(event) => setBroadcastSubject(event.target.value)}
+                className="mt-1.5 h-10 w-full rounded-lg border border-border px-3 text-[13px] text-navy outline-none focus:border-navy"
+              />
+            </label>
+            <label className="mt-3 block">
+              <span className="text-[12px] font-semibold text-navy">Message</span>
+              <textarea
+                value={broadcastMessage}
+                onChange={(event) => setBroadcastMessage(event.target.value)}
+                rows={5}
+                className="mt-1.5 w-full rounded-lg border border-border px-3 py-2 text-[13px] text-navy outline-none focus:border-navy"
+              />
+            </label>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setBroadcastOpen(false)}
+                className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg border border-border bg-white px-4 text-[13px] font-semibold text-navy hover:bg-page"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busyAction === 'broadcast'}
+                onClick={() => void handleBroadcast()}
+                className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg bg-navy px-4 text-[13px] font-semibold text-white hover:bg-navy-secondary disabled:opacity-60"
+              >
+                {busyAction === 'broadcast' ? 'Sending…' : 'Send'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -649,7 +809,7 @@ function FilterPill({
   onChange: (value: string) => void
 }) {
   return (
-    <label className="relative inline-flex h-[38px] min-h-[38px] items-center gap-1.5 rounded-lg border border-border bg-white pl-3 pr-2 text-[13px] text-navy">
+    <label className="relative inline-flex h-10 min-h-[40px] items-center gap-1.5 rounded-lg border border-border bg-white pl-3 pr-2 text-[13px] text-navy">
       <span className="font-medium text-muted">{label}</span>
       <span className="font-semibold">{displayValue ?? value}</span>
       <ChevronDown />

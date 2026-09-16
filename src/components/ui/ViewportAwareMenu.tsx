@@ -108,7 +108,7 @@ export function ViewportAwareMenu({
       if (event.key === 'Escape') onClose()
     }
 
-    function onPointer(event: MouseEvent): void {
+    function onPointer(event: PointerEvent): void {
       const target = event.target as Node
       if (menuRef.current?.contains(target)) return
       if (anchorEl?.contains(target)) return
@@ -116,10 +116,10 @@ export function ViewportAwareMenu({
     }
 
     document.addEventListener('keydown', onKey)
-    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('pointerdown', onPointer)
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('pointerdown', onPointer)
     }
   }, [open, onClose, anchorEl])
 

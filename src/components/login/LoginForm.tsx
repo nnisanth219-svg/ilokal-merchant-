@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { firstAllowedPath } from '../auth/UnauthorizedPage'
+import { getKeepSignedInPreference } from '../../services/authToken'
 import type { AuthErrorState, LoginFormErrors, LoginFormValues } from '../../types/auth'
 import { EmailField } from './EmailField'
 import { LoginOptions } from './LoginOptions'
@@ -42,7 +43,7 @@ export function LoginForm({
   const [values, setValues] = useState<LoginFormValues>({
     email: '',
     password: '',
-    keepSignedIn: true,
+    keepSignedIn: getKeepSignedInPreference(),
   })
   const [errors, setErrors] = useState<LoginFormErrors>({})
   const [showPassword, setShowPassword] = useState(false)
@@ -56,7 +57,7 @@ export function LoginForm({
   }
 
   const handleForgotPassword = () => {
-    // Placeholder — forgot-password flow lands in a later screen.
+    navigate('/login/forgot')
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -73,7 +74,7 @@ export function LoginForm({
     onAuthError?.(null)
 
     try {
-      const authenticatedUser = await login(values.email.trim(), values.password)
+      const authenticatedUser = await login(values.email.trim(), values.password, values.keepSignedIn)
       navigate(firstAllowedPath(authenticatedUser), { replace: true })
     } catch (error) {
       const message =

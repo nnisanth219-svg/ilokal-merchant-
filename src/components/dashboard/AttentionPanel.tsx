@@ -22,7 +22,7 @@ export function AttentionPanel() {
   const items = data ?? []
 
   return (
-    <section className="flex h-full min-h-[320px] flex-col rounded-xl border border-border bg-white p-5">
+    <section className="flex min-h-[280px] flex-col rounded-xl border border-border bg-white p-5 lg:h-full lg:min-h-[320px]">
       <h2 className="mb-4 shrink-0 text-[16px] font-bold text-navy">Needs your attention</h2>
 
       {loading ? (

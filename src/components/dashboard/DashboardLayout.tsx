@@ -6,7 +6,7 @@ function MobileNavBar() {
   const { openSidebar } = useSidebar()
 
   return (
-    <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-white px-4 lg:hidden">
+    <div className="flex min-h-12 shrink-0 items-center gap-3 border-b border-border bg-white px-4 pt-[env(safe-area-inset-top)] lg:hidden">
       <button
         type="button"
         aria-label="Open navigation menu"
@@ -31,7 +31,7 @@ function LayoutShell() {
   const { open, closeSidebar } = useSidebar()
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-page">
+    <div className="flex h-dvh w-full overflow-hidden bg-page">
       {open ? (
         <button
           type="button"
@@ -43,9 +43,9 @@ function LayoutShell() {
 
       <Sidebar />
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]">
         <MobileNavBar />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-hidden">
           <Outlet />
         </div>
       </div>
