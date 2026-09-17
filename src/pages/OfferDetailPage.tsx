@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { OfferStatusBadge } from '../components/offers/OfferStatusBadge'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { useAuth } from '../context/AuthContext'
 import {
   getOfferApi,
@@ -47,11 +48,7 @@ export function OfferDetailPage() {
   }, [loadOffer])
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center px-6">
-        <p className="text-[13px] text-muted">Loading offer…</p>
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   if (!offer) {
@@ -84,7 +81,7 @@ export function OfferDetailPage() {
               <span className="text-navy">{offer.offerCode}</span>
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <h1 className="text-[20px] font-bold tracking-[-0.02em] text-navy sm:text-[22px]">
+              <h1 className="break-words text-[20px] font-bold tracking-[-0.02em] text-navy sm:text-[22px]">
                 {offer.title}
               </h1>
               <OfferStatusBadge status={offer.status} />

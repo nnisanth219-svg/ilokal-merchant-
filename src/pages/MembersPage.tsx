@@ -3,6 +3,16 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { MemberStatusBadge } from '../components/members/MemberStatusBadge'
 import {
+  MobileRecordCard,
+  MobileRecordField,
+  MobileRecordFields,
+  MobileRecordList,
+  MobileRecordTop,
+  MobileSelect,
+  ResponsiveRecordLayout,
+} from '../components/cms/MobileRecordCard'
+import { ListPager } from '../components/cms/AdminListPrimitives'
+import {
   RowActionButton,
   ViewportAwareMenu,
   type ViewportMenuItem,
@@ -368,8 +378,23 @@ export function MembersPage() {
     }
   }
 
+  const renderMembersPager = (className?: string) => (
+    <ListPager
+      rangeStart={rangeStart}
+      rangeEnd={rangeEnd}
+      total={total}
+      currentPage={currentPage}
+      totalPages={totalPages}
+      pageNumbers={pageNumbers}
+      onPrevious={() => setPage((p) => Math.max(1, p - 1))}
+      onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+      onPage={setPage}
+      className={className}
+    />
+  )
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden md:h-full md:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -400,7 +425,7 @@ export function MembersPage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
+      <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6 md:overflow-hidden">
         <div className="mb-4 shrink-0">
           <p className="text-[15px] font-semibold text-navy">
             Members ·{' '}
@@ -520,9 +545,61 @@ export function MembersPage() {
           </div>
         ) : null}
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
-          <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto overscroll-x-contain">
+        <ResponsiveRecordLayout
+          loading={loading}
+          itemCount={pageItems.length}
+          emptyLabel="No members match your filters."
+          renderPager={renderMembersPager}
+          mobileCards={
+            <MobileRecordList>
+              {pageItems.map((member) => {
+                const selected = selectedIds.includes(member.id)
+                return (
+                  <MobileRecordCard
+                    key={member.id}
+                    selected={selected}
+                    muted={member.status === 'inactive' || member.status === 'deleted'}
+                  >
+                    <MobileRecordTop
+                      select={
+                        <MobileSelect
+                          checked={selected}
+                          onChange={() => toggleSelect(member.id)}
+                          label={`Select ${member.fullName}`}
+                        />
+                      }
+                      title={
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/members/${member.id}`)}
+                          className="text-left hover:underline"
+                        >
+                          {member.fullName}
+                        </button>
+                      }
+                      subtitle={member.memberCode}
+                      badge={<MemberStatusBadge status={member.status} />}
+                      action={
+                        <RowActionButton
+                          label={`Actions for ${member.fullName}`}
+                          open={openMenuId === member.id}
+                          onToggle={(el) => toggleMenu(member.id, el)}
+                        />
+                      }
+                    />
+                    <MobileRecordFields>
+                      <MobileRecordField label="Email" value={member.email} wide />
+                      <MobileRecordField label="Phone" value={member.phone} />
+                      <MobileRecordField label="Plan" value={member.planLabel} />
+                      <MobileRecordField label="Joined" value={formatDate(member.joinedAt)} />
+                      {member.city ? <MobileRecordField label="City" value={member.city} /> : null}
+                    </MobileRecordFields>
+                  </MobileRecordCard>
+                )
+              })}
+            </MobileRecordList>
+          }
+          table={
               <table className="min-w-[1040px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">
@@ -546,13 +623,6 @@ export function MembersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {loading && pageItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
-                        Loading members…
-                      </td>
-                    </tr>
-                  ) : null}
                   {pageItems.map((member) => {
                     const selected = selectedIds.includes(member.id)
                     const membershipLabel =
@@ -636,35 +706,8 @@ export function MembersPage() {
                   ) : null}
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {total}
-            </p>
-            <div className="flex flex-wrap items-center gap-1">
-              <PagerButton
-                label="Previous"
-                disabled={currentPage <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              />
-              {pageNumbers.map((n) => (
-                <PagerButton
-                  key={n}
-                  label={String(n)}
-                  active={currentPage === n}
-                  onClick={() => setPage(n)}
-                />
-              ))}
-              <PagerButton
-                label="Next"
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              />
-            </div>
-          </div>
-        </div>
+          }
+        />
       </div>
 
       <ViewportAwareMenu
@@ -835,34 +878,6 @@ function BulkBtn({ label, onClick }: { label: string; onClick: () => void }) {
       type="button"
       onClick={onClick}
       className="inline-flex h-10 min-h-[40px] items-center rounded-md border border-white/25 bg-white/10 px-3 text-[12px] font-semibold text-white hover:bg-white/15"
-    >
-      {label}
-    </button>
-  )
-}
-
-function PagerButton({
-  label,
-  onClick,
-  disabled,
-  active,
-}: {
-  label: string
-  onClick: () => void
-  disabled?: boolean
-  active?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={[
-        'inline-flex h-10 min-h-[40px] min-w-10 items-center justify-center rounded-md px-2.5 text-[12px] font-semibold transition',
-        active
-          ? 'bg-navy text-white'
-          : 'border border-border bg-white text-navy hover:bg-page disabled:cursor-not-allowed disabled:opacity-40',
-      ].join(' ')}
     >
       {label}
     </button>

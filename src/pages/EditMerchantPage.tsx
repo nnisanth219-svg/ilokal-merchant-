@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { MerchantWizard } from '../components/merchants/MerchantWizard'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { getMerchantApi, updateMerchantApi } from '../services/merchantApi'
 import { merchantToFormValues } from '../services/merchantStore'
 import type { Merchant } from '../types/merchant'
@@ -35,11 +36,7 @@ export function EditMerchantPage() {
   }, [id])
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center px-6">
-        <p className="text-[13px] text-muted">Loading merchant…</p>
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   if (!merchant) {

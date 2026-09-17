@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { ReviewStatusBadge } from '../components/reviews/ReviewStatusBadge'
 import { formatDate } from '../components/cms/AdminListPrimitives'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { useAuth } from '../context/AuthContext'
 import {
   getReviewApi,
@@ -91,11 +92,7 @@ export function ReviewDetailPage() {
   }
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center px-6">
-        <p className="text-[13px] text-muted">Loading review…</p>
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   if (!item) {

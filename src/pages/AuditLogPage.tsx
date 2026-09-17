@@ -5,12 +5,20 @@ import {
   CMS_PAGE_SIZE,
   FilterPill,
   formatDateTime,
+  ListPager,
   pageWindow,
-  PagerButton,
   SearchIcon,
   SummaryCard,
   Th,
 } from '../components/cms/AdminListPrimitives'
+import {
+  MobileRecordCard,
+  MobileRecordField,
+  MobileRecordFields,
+  MobileRecordList,
+  MobileRecordTop,
+  ResponsiveRecordLayout,
+} from '../components/cms/MobileRecordCard'
 import {
   getAuditLogApi,
   listAuditLogsApi,
@@ -128,8 +136,23 @@ export function AuditLogPage() {
     [currentPage, totalPages],
   )
 
+  const renderAuditPager = (className?: string) => (
+    <ListPager
+      rangeStart={rangeStart}
+      rangeEnd={rangeEnd}
+      total={total}
+      currentPage={currentPage}
+      totalPages={totalPages}
+      pageNumbers={pageNumbers}
+      onPrevious={() => setPage((p) => Math.max(1, p - 1))}
+      onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+      onPage={setPage}
+      className={className}
+    />
+  )
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden md:h-full md:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="min-w-0">
           <h1 className="text-[18px] font-bold tracking-[-0.02em] text-navy">Audit log</h1>
@@ -139,7 +162,7 @@ export function AuditLogPage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
+      <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6 md:overflow-hidden">
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
           <SummaryCard label="Total events" value={String(summary.total)} />
           <SummaryCard label="Today" value={String(summary.today)} />
@@ -232,9 +255,41 @@ export function AuditLogPage() {
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
-          <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto overscroll-x-contain">
+        <ResponsiveRecordLayout
+          loading={loading}
+          itemCount={pageItems.length}
+          emptyLabel="No audit events match your filters."
+          renderPager={renderAuditPager}
+          mobileCards={
+            <MobileRecordList>
+              {pageItems.map((row) => (
+                <MobileRecordCard key={row.id}>
+                  <MobileRecordTop
+                    title={row.adminName}
+                    subtitle={row.action}
+                    badge={<AuditStatusBadge status={row.status} />}
+                    action={
+                      <button
+                        type="button"
+                        onClick={() => setDetail(row)}
+                        className="inline-flex h-10 min-h-[40px] items-center justify-center rounded-lg px-2.5 text-[13px] font-semibold text-navy hover:bg-page"
+                      >
+                        View
+                      </button>
+                    }
+                  />
+                  <MobileRecordFields>
+                    <MobileRecordField label="Module" value={row.module} />
+                    <MobileRecordField label="Date / time" value={formatDateTime(row.occurredAt)} />
+                    <MobileRecordField label="Description" value={row.description} wide />
+                    <MobileRecordField label="Reason" value={row.reason} />
+                    <MobileRecordField label="IP / device" value={row.ipLabel} />
+                  </MobileRecordFields>
+                </MobileRecordCard>
+              ))}
+            </MobileRecordList>
+          }
+          table={
               <table className="min-w-[1100px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">
@@ -250,13 +305,6 @@ export function AuditLogPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {loading && pageItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
-                        Loading audit events…
-                      </td>
-                    </tr>
-                  ) : null}
                   {pageItems.map((row) => (
                     <tr
                       key={row.id}
@@ -310,35 +358,8 @@ export function AuditLogPage() {
                   ) : null}
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {total}
-            </p>
-            <div className="flex flex-wrap items-center gap-1">
-              <PagerButton
-                label="Previous"
-                disabled={currentPage <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              />
-              {pageNumbers.map((n) => (
-                <PagerButton
-                  key={n}
-                  label={String(n)}
-                  active={currentPage === n}
-                  onClick={() => setPage(n)}
-                />
-              ))}
-              <PagerButton
-                label="Next"
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              />
-            </div>
-          </div>
-        </div>
+          }
+        />
       </div>
 
       {detail
@@ -383,13 +404,13 @@ function AuditDetailDrawer({
         className="absolute inset-0 bg-navy/40"
         onClick={onClose}
       />
-      <aside className="relative z-10 flex h-full w-full max-w-md flex-col bg-white shadow-xl">
-        <div className="flex items-start justify-between border-b border-border px-5 py-4">
-          <div>
+      <aside className="relative z-10 flex h-dvh max-h-dvh w-full max-w-md flex-col bg-white shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+          <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
               Audit detail
             </p>
-            <h2 className="mt-1 text-[16px] font-bold text-navy">{detail.action}</h2>
+            <h2 className="mt-1 break-words text-[16px] font-bold text-navy">{detail.action}</h2>
           </div>
           <button
             type="button"

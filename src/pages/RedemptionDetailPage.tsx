@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { RedemptionStatusBadge } from '../components/redemptions/RedemptionStatusBadge'
 import { formatDateTime } from '../components/cms/AdminListPrimitives'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { getRedemptionApi } from '../services/redemptionApi'
 import type { Redemption } from '../types/redemption'
 
@@ -35,11 +36,7 @@ export function RedemptionDetailPage() {
   }, [id])
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center px-6">
-        <p className="text-[13px] text-muted">Loading redemption…</p>
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   if (!item) {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
 import { MemberStatusBadge } from '../components/members/MemberStatusBadge'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { useAuth } from '../context/AuthContext'
 import {
   getMemberApi,
@@ -84,11 +85,7 @@ export function MemberDetailPage() {
   }
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center px-6">
-        <p className="text-[13px] text-muted">Loading member…</p>
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   if (!member) {
@@ -178,7 +175,7 @@ export function MemberDetailPage() {
           </div>
         </div>
 
-        <div className="mt-5 flex gap-1 overflow-x-auto pb-0.5">
+        <div className="mt-5 flex flex-nowrap gap-1 overflow-x-auto overscroll-x-contain pb-0.5">
           <TabButton active={tab === 'overview'} label="Overview" onClick={() => setTab('overview')} />
           <TabButton
             active={tab === 'purchases'}

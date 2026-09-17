@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { listAdminRolesApi } from '../services/adminUserApi'
 import { getSettingsApi, updateSettingSectionApi } from '../services/settingsApi'
 import { canEditInModule } from '../types/auth'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import type { AppSettingsState, SettingKey } from '../types/settings'
 import type { AdminRole, RolePermissionMatrix } from '../types/adminUser'
 
@@ -104,7 +105,7 @@ export function SettingsPage() {
           {error ? <p className="mt-1 text-[12px] text-action">{error}</p> : null}
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-1 border-b border-border">
+        <div className="mt-4 flex flex-nowrap gap-1 overflow-x-auto overscroll-x-contain border-b border-border">
           <TabButton
             active={tab === 'general'}
             label="General"
@@ -135,9 +136,7 @@ export function SettingsPage() {
           </div>
         ) : null}
 
-        {loading && !draft ? (
-          <p className="py-14 text-center text-[13px] text-muted">Loading settings…</p>
-        ) : null}
+        {loading && !draft ? <LoadingSpinner /> : null}
 
         {!loading && !draft ? (
           <p className="py-14 text-center text-[13px] text-muted">
@@ -236,9 +235,7 @@ export function SettingsPage() {
             {rolesError ? (
               <p className="text-[13px] text-action">{rolesError}</p>
             ) : null}
-            {rolesLoading && roles.length === 0 ? (
-              <p className="py-14 text-center text-[13px] text-muted">Loading roles…</p>
-            ) : null}
+            {rolesLoading && roles.length === 0 ? <LoadingSpinner compact /> : null}
             {!rolesLoading && roles.length === 0 && !rolesError ? (
               <p className="py-14 text-center text-[13px] text-muted">No roles found.</p>
             ) : null}

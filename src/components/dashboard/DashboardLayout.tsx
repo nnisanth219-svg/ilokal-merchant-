@@ -45,7 +45,7 @@ function LayoutShell() {
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]">
         <MobileNavBar />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain md:overflow-hidden">
           <Outlet />
         </div>
       </div>

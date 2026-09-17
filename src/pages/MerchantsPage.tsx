@@ -8,6 +8,19 @@ import {
   ViewportAwareMenu,
   type ViewportMenuItem,
 } from '../components/ui/ViewportAwareMenu'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
+import {
+  DesktopTableFrame,
+  MobileEmptyState,
+  MobilePagerFrame,
+  MobileRecordCard,
+  MobileRecordField,
+  MobileRecordFields,
+  MobileRecordList,
+  MobileRecordTop,
+  MobileSelect,
+} from '../components/cms/MobileRecordCard'
+import { formatDate, ListPager } from '../components/cms/AdminListPrimitives'
 import { useAuth } from '../context/AuthContext'
 import { useColumnVisibility } from '../hooks/useColumnVisibility'
 import { MERCHANT_CATEGORIES, MALAYSIA_STATES } from '../data/merchants'
@@ -388,8 +401,38 @@ export function MerchantsPage() {
     return `${merchant.city}, ${merchant.state}`
   }
 
+  const renderMerchantPager = (className?: string) => (
+    <ListPager
+      rangeStart={rangeStart}
+      rangeEnd={rangeEnd}
+      total={total}
+      extra={
+        <>
+          <span className="mx-1.5 text-border">·</span>
+          <button
+            type="button"
+            onClick={() => {
+              setIncludeDeleted((v) => !v)
+              setPage(1)
+            }}
+            className={['font-semibold', includeDeleted ? 'text-navy' : 'text-[#3B6FB6]'].join(' ')}
+          >
+            Include deleted
+          </button>
+        </>
+      }
+      currentPage={currentPage}
+      totalPages={totalPages}
+      pageNumbers={pageNumbers}
+      onPrevious={() => setPage((p) => Math.max(1, p - 1))}
+      onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+      onPage={setPage}
+      className={className}
+    />
+  )
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden md:h-full md:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -397,9 +440,6 @@ export function MerchantsPage() {
             <p className="mt-0.5 text-[12px] text-muted">
               Search, filter, bulk actions, row menu → activate / deactivate / soft delete
             </p>
-            {loading ? (
-              <p className="mt-1 text-[12px] text-muted">Loading…</p>
-            ) : null}
             {error ? (
               <p className="mt-1 text-[12px] text-action">{error}</p>
             ) : null}
@@ -442,7 +482,7 @@ export function MerchantsPage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
+      <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6 md:overflow-hidden">
         <div className="mb-4 shrink-0">
           <p className="text-[15px] font-semibold text-navy">
             Merchants · <span className="text-muted">{liveCount} live</span>
@@ -581,9 +621,82 @@ export function MerchantsPage() {
           </div>
         ) : null}
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
-          <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto overscroll-x-contain">
+        {loading && pageItems.length === 0 ? (
+          <LoadingSpinner />
+        ) : (
+          <>
+        {!loading && pageItems.length === 0 ? (
+          <MobileEmptyState>No merchants match your filters.</MobileEmptyState>
+        ) : null}
+
+        {pageItems.length > 0 ? (
+          <MobileRecordList>
+            {pageItems.map((merchant) => {
+              const selected = selectedIds.includes(merchant.id)
+              return (
+                <MobileRecordCard
+                  key={merchant.id}
+                  selected={selected}
+                  muted={merchant.status === 'deleted'}
+                >
+                  <MobileRecordTop
+                    select={
+                      <MobileSelect
+                        checked={selected}
+                        onChange={() => toggleSelect(merchant.id)}
+                        label={`Select ${merchant.businessName}`}
+                      />
+                    }
+                    title={
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/merchants/${merchant.id}`)}
+                        className="text-left hover:underline"
+                      >
+                        {merchant.businessName}
+                      </button>
+                    }
+                    subtitle={`${merchant.merchantCode}${merchant.phone ? ` · ${merchant.phone}` : ''}`}
+                    badge={<MerchantStatusBadge status={merchant.status} />}
+                    action={
+                      <RowActionButton
+                        label={`Actions for ${merchant.businessName}`}
+                        open={openMenuId === merchant.id}
+                        onToggle={(el) => toggleMenu(merchant.id, el)}
+                      />
+                    }
+                  />
+                  <MobileRecordFields>
+                    <MobileRecordField label="Category" value={merchant.category} />
+                    <MobileRecordField label="Location" value={locationLabel(merchant)} />
+                    <MobileRecordField
+                      label="Offers"
+                      value={`${merchant.offersCount} ${merchant.offersCount === 1 ? 'offer' : 'offers'}`}
+                    />
+                    <MobileRecordField
+                      label="Redeemed"
+                      value={
+                        merchant.redeemedCount > 0
+                          ? merchant.redeemedCount.toLocaleString('en-US')
+                          : '—'
+                      }
+                    />
+                    <MobileRecordField label="Added" value={formatDate(merchant.createdAt)} />
+                    {merchant.email ? (
+                      <MobileRecordField label="Email" value={merchant.email} />
+                    ) : null}
+                  </MobileRecordFields>
+                </MobileRecordCard>
+              )
+            })}
+          </MobileRecordList>
+        ) : null}
+
+        {!(loading && pageItems.length === 0) ? (
+          <MobilePagerFrame>{renderMerchantPager()}</MobilePagerFrame>
+        ) : null}
+
+        <DesktopTableFrame footer={renderMerchantPager('border-t border-border')}>
             <table className="min-w-[980px] w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-border bg-[#FAF9F6]">
@@ -702,55 +815,15 @@ export function MerchantsPage() {
                       }
                       className="px-4 py-14 text-center text-[13px] text-muted"
                     >
-                      {loading ? 'Loading merchants…' : 'No merchants match your filters.'}
+                      No merchants match your filters.
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border bg-white px-4 py-3.5">
-            <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {total}
-              <span className="mx-1.5 text-border">·</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setIncludeDeleted((v) => !v)
-                  setPage(1)
-                }}
-                className={[
-                  'font-semibold',
-                  includeDeleted ? 'text-navy' : 'text-[#3B6FB6]',
-                ].join(' ')}
-              >
-                Include deleted
-              </button>
-            </p>
-            <div className="flex flex-wrap items-center gap-1">
-              <PagerButton
-                label="Previous"
-                disabled={currentPage <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              />
-              {pageNumbers.map((n) => (
-                <PagerButton
-                  key={n}
-                  label={String(n)}
-                  active={currentPage === n}
-                  onClick={() => setPage(n)}
-                />
-              ))}
-              <PagerButton
-                label="Next"
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              />
-            </div>
-          </div>
-        </div>
+        </DesktopTableFrame>
+          </>
+        )}
       </div>
 
       <ViewportAwareMenu
@@ -918,34 +991,6 @@ function BulkBtn({ label, onClick }: { label: string; onClick: () => void }) {
       type="button"
       onClick={onClick}
       className="inline-flex h-10 min-h-[40px] items-center rounded-md bg-navy-active px-3 text-[12px] font-semibold text-white hover:bg-[#2a5699]"
-    >
-      {label}
-    </button>
-  )
-}
-
-function PagerButton({
-  label,
-  onClick,
-  disabled = false,
-  active = false,
-}: {
-  label: string
-  onClick: () => void
-  disabled?: boolean
-  active?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={[
-        'inline-flex h-10 min-h-[40px] min-w-10 items-center justify-center rounded-md px-2.5 text-[12px] font-semibold',
-        active
-          ? 'bg-navy text-white'
-          : 'border border-border bg-white text-navy hover:bg-page disabled:cursor-not-allowed disabled:opacity-40',
-      ].join(' ')}
     >
       {label}
     </button>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { OfferForm } from '../components/offers/OfferForm'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { getOfferApi, updateOfferApi } from '../services/offerApi'
 import { offerToFormValues } from '../services/offerStore'
 import type { Offer } from '../types/offer'
@@ -35,11 +36,7 @@ export function EditOfferPage() {
   }, [id])
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center px-6">
-        <p className="text-[13px] text-muted">Loading offer…</p>
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   if (!offer) {

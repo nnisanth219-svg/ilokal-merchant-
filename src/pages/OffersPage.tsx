@@ -8,6 +8,19 @@ import {
   ViewportAwareMenu,
   type ViewportMenuItem,
 } from '../components/ui/ViewportAwareMenu'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
+import {
+  DesktopTableFrame,
+  MobileEmptyState,
+  MobilePagerFrame,
+  MobileRecordCard,
+  MobileRecordField,
+  MobileRecordFields,
+  MobileRecordList,
+  MobileRecordTop,
+  MobileSelect,
+} from '../components/cms/MobileRecordCard'
+import { formatDate, ListPager } from '../components/cms/AdminListPrimitives'
 import { useAuth } from '../context/AuthContext'
 import { useColumnVisibility } from '../hooks/useColumnVisibility'
 import {
@@ -355,8 +368,38 @@ export function OffersPage() {
     }
   }
 
+  const renderOffersPager = (className?: string) => (
+    <ListPager
+      rangeStart={rangeStart}
+      rangeEnd={rangeEnd}
+      total={total}
+      extra={
+        <>
+          <span className="mx-1.5 text-border">·</span>
+          <button
+            type="button"
+            onClick={() => {
+              setIncludeDeleted((v) => !v)
+              setPage(1)
+            }}
+            className={['font-semibold', includeDeleted ? 'text-navy' : 'text-[#3B6FB6]'].join(' ')}
+          >
+            Include deleted
+          </button>
+        </>
+      }
+      currentPage={currentPage}
+      totalPages={totalPages}
+      pageNumbers={pageNumbers}
+      onPrevious={() => setPage((p) => Math.max(1, p - 1))}
+      onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+      onPage={setPage}
+      className={className}
+    />
+  )
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden md:h-full md:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -364,7 +407,6 @@ export function OffersPage() {
             <p className="mt-0.5 text-[12px] text-muted">
               Manage merchant offers available to iLokal members.
             </p>
-            {loading ? <p className="mt-1 text-[12px] text-muted">Loading…</p> : null}
             {error ? <p className="mt-1 text-[12px] text-action">{error}</p> : null}
           </div>
           {canCreate ? (
@@ -378,7 +420,7 @@ export function OffersPage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
+      <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6 md:overflow-hidden">
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
           <SummaryCard label="Total offers" value={String(summary.total)} />
           <SummaryCard label="Live" value={String(summary.live)} />
@@ -547,9 +589,70 @@ export function OffersPage() {
           </div>
         ) : null}
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
-          <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto overscroll-x-contain">
+        {loading && pageItems.length === 0 ? (
+          <LoadingSpinner />
+        ) : (
+          <>
+            {!loading && pageItems.length === 0 ? (
+              <MobileEmptyState>No offers match your filters.</MobileEmptyState>
+            ) : null}
+            {pageItems.length > 0 ? (
+              <MobileRecordList>
+                {pageItems.map((offer) => {
+                  const selected = selectedIds.includes(offer.id)
+                  return (
+                    <MobileRecordCard key={offer.id} selected={selected}>
+                      <MobileRecordTop
+                        select={
+                          <MobileSelect
+                            checked={selected}
+                            onChange={() =>
+                              setSelectedIds((prev) =>
+                                prev.includes(offer.id)
+                                  ? prev.filter((id) => id !== offer.id)
+                                  : [...prev, offer.id],
+                              )
+                            }
+                            label={`Select ${offer.title}`}
+                          />
+                        }
+                        title={
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/offers/${offer.id}`)}
+                            className="text-left hover:underline"
+                          >
+                            {offer.title}
+                          </button>
+                        }
+                        subtitle={offer.offerCode}
+                        badge={<OfferStatusBadge status={offer.status} />}
+                        action={
+                          <RowActionButton
+                            label={`Actions for ${offer.title}`}
+                            open={openMenuId === offer.id}
+                            onToggle={(el) => toggleMenu(offer.id, el)}
+                          />
+                        }
+                      />
+                      <MobileRecordFields>
+                        <MobileRecordField label="Merchant" value={offer.merchantName} />
+                        <MobileRecordField label="Category" value={offer.category} />
+                        <MobileRecordField label="Offer value" value={offer.benefitLabel} />
+                        <MobileRecordField
+                          label="Redemptions"
+                          value={offer.redeemedCount.toLocaleString('en-US')}
+                        />
+                        <MobileRecordField label="Start date" value={formatDate(offer.validFrom)} />
+                        <MobileRecordField label="End date" value={formatDate(offer.validTo)} />
+                      </MobileRecordFields>
+                    </MobileRecordCard>
+                  )
+                })}
+              </MobileRecordList>
+            ) : null}
+            <MobilePagerFrame>{renderOffersPager()}</MobilePagerFrame>
+            <DesktopTableFrame footer={renderOffersPager('border-t border-border')}>
               <table className="min-w-[1080px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">
@@ -662,55 +765,15 @@ export function OffersPage() {
                         }
                         className="px-4 py-14 text-center text-[13px] text-muted"
                       >
-                        {loading ? 'Loading offers…' : 'No offers match your filters.'}
+                        No offers match your filters.
                       </td>
                     </tr>
                   ) : null}
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border bg-white px-4 py-3.5">
-            <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {total}
-              <span className="mx-1.5 text-border">·</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setIncludeDeleted((v) => !v)
-                  setPage(1)
-                }}
-                className={[
-                  'font-semibold',
-                  includeDeleted ? 'text-navy' : 'text-[#3B6FB6]',
-                ].join(' ')}
-              >
-                Include deleted
-              </button>
-            </p>
-            <div className="flex flex-wrap items-center gap-1">
-              <PagerButton
-                label="Previous"
-                disabled={currentPage <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              />
-              {pageNumbers.map((n) => (
-                <PagerButton
-                  key={n}
-                  label={String(n)}
-                  active={currentPage === n}
-                  onClick={() => setPage(n)}
-                />
-              ))}
-              <PagerButton
-                label="Next"
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              />
-            </div>
-          </div>
-        </div>
+            </DesktopTableFrame>
+          </>
+        )}
       </div>
 
       <ViewportAwareMenu
@@ -843,33 +906,5 @@ function FilterPill({
         ))}
       </select>
     </label>
-  )
-}
-
-function PagerButton({
-  label,
-  onClick,
-  disabled = false,
-  active = false,
-}: {
-  label: string
-  onClick: () => void
-  disabled?: boolean
-  active?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={[
-        'inline-flex h-10 min-h-[40px] min-w-10 items-center justify-center rounded-md px-2.5 text-[12px] font-semibold',
-        active
-          ? 'bg-navy text-white'
-          : 'border border-border bg-white text-navy hover:bg-page disabled:cursor-not-allowed disabled:opacity-40',
-      ].join(' ')}
-    >
-      {label}
-    </button>
   )
 }

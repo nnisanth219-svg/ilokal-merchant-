@@ -48,9 +48,9 @@ export function FilterPill({
   onChange: (value: string) => void
 }) {
   return (
-    <label className="relative inline-flex h-10 min-h-[40px] max-w-full items-center gap-1.5 rounded-lg border border-border bg-white pl-3 pr-2 text-[13px] text-navy">
+    <label className="relative inline-flex h-10 min-h-[40px] max-w-full shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white pl-3 pr-2 text-[13px] text-navy sm:max-w-none">
       <span className="font-medium text-muted">{label}</span>
-      <span className="max-w-[9.5rem] truncate font-semibold sm:max-w-none">{displayValue ?? value}</span>
+      <span className="max-w-[10rem] truncate font-semibold sm:max-w-[16rem]">{displayValue ?? value}</span>
       <ChevronDown />
       <select
         value={value}
@@ -134,6 +134,58 @@ export function pageWindow(currentPage: number, totalPages: number): number[] {
     return [totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
   }
   return [currentPage - 1, currentPage, currentPage + 1, currentPage + 2]
+}
+
+export function ListPager({
+  rangeStart,
+  rangeEnd,
+  total,
+  extra,
+  currentPage,
+  totalPages,
+  pageNumbers,
+  onPrevious,
+  onNext,
+  onPage,
+  className,
+}: {
+  rangeStart: number
+  rangeEnd: number
+  total: number
+  extra?: ReactNode
+  currentPage: number
+  totalPages: number
+  pageNumbers: number[]
+  onPrevious: () => void
+  onNext: () => void
+  onPage: (page: number) => void
+  className?: string
+}) {
+  return (
+    <div
+      className={[
+        'flex shrink-0 flex-col gap-3 bg-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between',
+        className ?? '',
+      ].join(' ')}
+    >
+      <p className="text-[12px] text-muted">
+        Showing {rangeStart}–{rangeEnd} of {total}
+        {extra}
+      </p>
+      <div className="flex flex-wrap items-center gap-1">
+        <PagerButton label="Previous" disabled={currentPage <= 1} onClick={onPrevious} />
+        {pageNumbers.map((n) => (
+          <PagerButton
+            key={n}
+            label={String(n)}
+            active={currentPage === n}
+            onClick={() => onPage(n)}
+          />
+        ))}
+        <PagerButton label="Next" disabled={currentPage >= totalPages} onClick={onNext} />
+      </div>
+    </div>
+  )
 }
 
 export const CMS_PAGE_SIZE = 25

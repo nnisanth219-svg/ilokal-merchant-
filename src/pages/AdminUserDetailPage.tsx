@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AdminUserStatusBadge } from '../components/adminUsers/AdminUserStatusBadge'
 import { ConfirmDialog } from '../components/merchants/ConfirmDialog'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { useAuth } from '../context/AuthContext'
 import {
   getAdminUserApi,
@@ -125,11 +126,7 @@ export function AdminUserDetailPage() {
   const canEditPermissions = canManage && !isTargetSuperAdmin && user?.status !== 'deleted'
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center px-6">
-        <p className="text-[13px] text-muted">Loading admin user…</p>
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   if (!user) {

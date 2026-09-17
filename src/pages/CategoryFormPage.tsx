@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createCategoryApi, getCategoryApi, updateCategoryApi } from '../services/categoryApi'
 import { emptyCategoryForm } from '../services/categoryStore'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import type { CategoryFormValues } from '../types/category'
 
 export function CategoryFormPage() {
@@ -76,11 +77,7 @@ export function CategoryFormPage() {
   }
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center px-6">
-        <p className="text-[13px] text-muted">Loading category…</p>
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   if (isEdit && notFound) {

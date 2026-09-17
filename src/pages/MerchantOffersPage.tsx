@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { OfferStatusBadge } from '../components/offers/OfferStatusBadge'
 import { MerchantStatusBadge } from '../components/merchants/MerchantStatusBadge'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { useAuth } from '../context/AuthContext'
 import { getMerchantApi } from '../services/merchantApi'
 import { listOffersApi } from '../services/offerApi'
@@ -51,11 +52,7 @@ export function MerchantOffersPage() {
   }, [id])
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center px-6">
-        <p className="text-[13px] text-muted">Loading merchant…</p>
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   if (!merchant) {
@@ -132,7 +129,7 @@ export function MerchantOffersPage() {
                     <OfferStatusBadge status={offer.status} />
                     <Link
                       to={`/offers/${offer.id}/edit`}
-                      className="inline-flex h-8 items-center rounded-lg border border-border bg-white px-3 text-[12px] font-semibold text-navy hover:bg-page"
+                      className="inline-flex h-10 min-h-[40px] items-center rounded-lg border border-border bg-white px-3 text-[12px] font-semibold text-navy hover:bg-page"
                     >
                       Edit
                     </Link>

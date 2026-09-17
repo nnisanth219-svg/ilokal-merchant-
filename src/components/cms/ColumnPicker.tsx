@@ -32,7 +32,7 @@ export function ColumnPicker<K extends string>({
         Columns
       </button>
       {open ? (
-        <div className="absolute right-0 z-20 mt-2 w-[220px] rounded-xl border border-border bg-white p-2 shadow-[0_12px_30px_rgba(16,43,89,0.12)]">
+        <div className="absolute right-0 z-30 mt-2 w-[220px] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-white p-2 shadow-[0_12px_30px_rgba(16,43,89,0.12)]">
           {columns.map((column) => (
             <label
               key={column.key}

@@ -6,12 +6,21 @@ import {
   CMS_PAGE_SIZE,
   FilterPill,
   formatDateTime,
+  ListPager,
   pageWindow,
-  PagerButton,
   SearchIcon,
   SummaryCard,
   Th,
 } from '../components/cms/AdminListPrimitives'
+import {
+  MobileRecordCard,
+  MobileRecordField,
+  MobileRecordFields,
+  MobileRecordList,
+  MobileRecordTop,
+  MobileSelect,
+  ResponsiveRecordLayout,
+} from '../components/cms/MobileRecordCard'
 import {
   RowActionButton,
   ViewportAwareMenu,
@@ -280,8 +289,23 @@ export function RedemptionsPage() {
     window.setTimeout(() => setExportMsg(null), 2500)
   }
 
+  const renderRedemptionsPager = (className?: string) => (
+    <ListPager
+      rangeStart={rangeStart}
+      rangeEnd={rangeEnd}
+      total={total}
+      currentPage={currentPage}
+      totalPages={totalPages}
+      pageNumbers={pageNumbers}
+      onPrevious={() => setPage((p) => Math.max(1, p - 1))}
+      onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+      onPage={setPage}
+      className={className}
+    />
+  )
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain lg:h-full lg:overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden md:h-full md:overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -306,7 +330,7 @@ export function RedemptionsPage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
+      <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6 md:overflow-hidden">
         <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
           <SummaryCard label="Total redemptions" value={String(summary.total)} />
           <SummaryCard label="Today" value={String(summary.today)} />
@@ -429,9 +453,56 @@ export function RedemptionsPage() {
           </div>
         ) : null}
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white">
-          <div className="min-h-0 flex-1 overflow-auto">
-            <div className="overflow-x-auto overscroll-x-contain">
+        <ResponsiveRecordLayout
+          loading={loading}
+          itemCount={pageItems.length}
+          emptyLabel="No redemptions match your filters."
+          renderPager={renderRedemptionsPager}
+          mobileCards={
+            <MobileRecordList>
+              {pageItems.map((row) => {
+                const selected = selectedIds.includes(row.id)
+                return (
+                  <MobileRecordCard key={row.id} selected={selected}>
+                    <MobileRecordTop
+                      select={
+                        <MobileSelect
+                          checked={selected}
+                          onChange={() => toggleSelect(row)}
+                          label={`Select ${row.redemptionCode}`}
+                        />
+                      }
+                      title={
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/redemptions/${row.id}`)}
+                          className="text-left hover:underline"
+                        >
+                          {row.memberName}
+                        </button>
+                      }
+                      subtitle={row.redemptionCode}
+                      badge={<RedemptionStatusBadge status={row.status} />}
+                      action={
+                        <RowActionButton
+                          label={`Actions for ${row.redemptionCode}`}
+                          open={openMenuId === row.id}
+                          onToggle={(el) => toggleMenu(row.id, el)}
+                        />
+                      }
+                    />
+                    <MobileRecordFields>
+                      <MobileRecordField label="Merchant" value={row.merchantName} />
+                      <MobileRecordField label="Offer" value={row.offerTitle} />
+                      <MobileRecordField label="Date / time" value={formatDateTime(row.redeemedAt)} />
+                      <MobileRecordField label="Method" value={row.method} />
+                    </MobileRecordFields>
+                  </MobileRecordCard>
+                )
+              })}
+            </MobileRecordList>
+          }
+          table={
               <table className="min-w-[1080px] w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border bg-[#FAF9F6]">
@@ -455,13 +526,6 @@ export function RedemptionsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {loading && pageItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="px-4 py-14 text-center text-[13px] text-muted">
-                        Loading redemptions…
-                      </td>
-                    </tr>
-                  ) : null}
                   {pageItems.map((row) => {
                     const selected = selectedIds.includes(row.id)
                     return (
@@ -527,35 +591,8 @@ export function RedemptionsPage() {
                   ) : null}
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-white px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[12px] text-muted">
-              Showing {rangeStart}–{rangeEnd} of {total}
-            </p>
-            <div className="flex flex-wrap items-center gap-1">
-              <PagerButton
-                label="Previous"
-                disabled={currentPage <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              />
-              {pageNumbers.map((n) => (
-                <PagerButton
-                  key={n}
-                  label={String(n)}
-                  active={currentPage === n}
-                  onClick={() => setPage(n)}
-                />
-              ))}
-              <PagerButton
-                label="Next"
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              />
-            </div>
-          </div>
-        </div>
+          }
+        />
       </div>
 
       <ViewportAwareMenu

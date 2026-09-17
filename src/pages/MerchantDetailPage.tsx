@@ -7,6 +7,7 @@ import { MerchantStatusBadge } from '../components/merchants/MerchantStatusBadge
 import { OfferStatusBadge } from '../components/offers/OfferStatusBadge'
 import { RedemptionStatusBadge } from '../components/redemptions/RedemptionStatusBadge'
 import { ReviewStatusBadge } from '../components/reviews/ReviewStatusBadge'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { useAuth } from '../context/AuthContext'
 import { listMembersApi } from '../services/memberApi'
 import {
@@ -75,11 +76,7 @@ export function MerchantDetailPage() {
   }, [loadMerchant])
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center px-6">
-        <p className="text-[13px] text-muted">Loading merchant…</p>
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   if (!merchant) {
@@ -120,7 +117,7 @@ export function MerchantDetailPage() {
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-[20px] font-bold tracking-[-0.02em] text-white sm:text-[22px]">
+                <h1 className="break-words text-[20px] font-bold tracking-[-0.02em] text-white sm:text-[22px]">
                   {merchant.businessName}
                 </h1>
                 <span className="inline-flex items-center rounded-full bg-white/10 px-1 py-0.5">
@@ -193,7 +190,7 @@ export function MerchantDetailPage() {
           </div>
         </div>
 
-        <div className="mt-5 flex gap-1 overflow-x-auto overscroll-x-contain pb-0.5">
+        <div className="mt-5 flex flex-nowrap gap-1 overflow-x-auto overscroll-x-contain pb-0.5">
           <TabButton active={tab === 'overview'} label="Overview" onClick={() => setTab('overview')} />
           <TabButton
             active={tab === 'offers'}
@@ -757,7 +754,7 @@ function RelatedRecordsPanel({
       {!canView ? (
         <p className="px-4 py-8 text-center text-[13px] text-muted">{permissionLabel}</p>
       ) : loading ? (
-        <p className="px-4 py-8 text-center text-[13px] text-muted">Loading…</p>
+        <LoadingSpinner compact />
       ) : error ? (
         <p className="px-4 py-8 text-center text-[13px] text-action">{error}</p>
       ) : !hasRows ? (
